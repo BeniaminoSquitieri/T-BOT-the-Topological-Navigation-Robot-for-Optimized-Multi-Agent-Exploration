@@ -98,10 +98,13 @@ def save_topological_map(skeleton, topo_map, filename, title):
     plt.savefig(filename)
     plt.show()
 
-# --- Funzioni per salvare la mappa nel formato pgm e yaml ---
-def save_as_pgm(skeleton_map, pgm_filename):
-    skeleton_map = (skeleton_map * 255).astype(np.uint8)
-    Image.fromarray(skeleton_map).save(pgm_filename)
+# --- Funzioni per salvare le mappe intermedie in formati PNG, PGM e YAML ---
+def save_as_pgm(image, pgm_filename):
+    image = (image * 255).astype(np.uint8)
+    Image.fromarray(image).save(pgm_filename)
+
+def save_as_png(image, png_filename):
+    Image.fromarray((image * 255).astype(np.uint8)).save(png_filename)
 
 def save_as_yaml(yaml_filename, pgm_filename):
     data = {
@@ -118,21 +121,44 @@ def save_as_yaml(yaml_filename, pgm_filename):
 # --- Funzione principale ---
 def process_map(image_path, max_nodes=50):
     occupancy_grid = load_map(image_path)
+
+    # Salva mappa di occupazione
+    save_as_png(occupancy_grid, "occupazione_originale.png")
+    save_as_pgm(occupancy_grid, "occupazione_originale.pgm")
+    save_as_yaml("occupazione_originale.yaml", "occupazione_originale.pgm")
+
     binary_map = create_binary_map(occupancy_grid)
 
+    # Salva mappa binaria
+    save_as_png(binary_map, "mappa_binaria.png")
+    save_as_pgm(binary_map, "mappa_binaria.pgm")
+    save_as_yaml("mappa_binaria.yaml", "mappa_binaria.pgm")
+
     distance_map = compute_distance_map(binary_map)
+
+    # Salva mappa delle distanze euclidee
+    save_as_png(distance_map, "mappa_distanze_euclidee.png")
+
     voronoi_map = create_voronoi_lines(distance_map, binary_map)
+
+    # Salva linee di Voronoi
+    save_as_png(voronoi_map, "linee_voronoi.png")
+    save_as_pgm(voronoi_map, "linee_voronoi.pgm")
+    save_as_yaml("linee_voronoi.yaml", "linee_voronoi.pgm")
+
     voronoi_skeleton = skeletonize_voronoi(voronoi_map)
 
+    # Salva scheletrizzazione
+    save_as_png(voronoi_skeleton, "scheletro_voronoi.png")
+    save_as_pgm(voronoi_skeleton, "scheletro_voronoi.pgm")
+    save_as_yaml("scheletro_voronoi.yaml", "scheletro_voronoi.pgm")
+
+    # Creazione del grafo topologico utilizzando gli archi dello scheletro
     topo_map = create_topological_graph_using_skeleton(voronoi_skeleton, max_nodes)
 
-    # Salva la mappa topologica in formato PNG
+    # Salva la mappa topologica finale
     save_topological_map(voronoi_skeleton, topo_map, "mappa_topologica_scheletro.png", "Mappa Topologica con Arco sullo Scheletro")
-
-    # Salva la mappa scheletrizzata in formato PGM
     save_as_pgm(voronoi_skeleton, "mappa_topologica_scheletro.pgm")
-
-    # Salva il file YAML corrispondente
     save_as_yaml("mappa_topologica_scheletro.yaml", "mappa_topologica_scheletro.pgm")
 
 # Esegui il codice
