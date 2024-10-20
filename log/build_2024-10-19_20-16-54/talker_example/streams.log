@@ -1,0 +1,41 @@
+[11.383s] Invoking command in '/home/beniamino/turtlebot4/diem_turtlebot_ws/src/talker_example': PYTHONPATH=/home/beniamino/turtlebot4/build/talker_example/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/beniamino/turtlebot4/install/talker_example/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated setup.py egg_info --egg-base ../../../build/talker_example build --build-base /home/beniamino/turtlebot4/build/talker_example/build install --record /home/beniamino/turtlebot4/build/talker_example/install.log --single-version-externally-managed install_data
+[11.632s] running egg_info
+[11.632s] creating ../../../build/talker_example/talker_example.egg-info
+[11.650s] writing ../../../build/talker_example/talker_example.egg-info/PKG-INFO
+[11.651s] writing dependency_links to ../../../build/talker_example/talker_example.egg-info/dependency_links.txt
+[11.651s] writing entry points to ../../../build/talker_example/talker_example.egg-info/entry_points.txt
+[11.652s] writing requirements to ../../../build/talker_example/talker_example.egg-info/requires.txt
+[11.652s] writing top-level names to ../../../build/talker_example/talker_example.egg-info/top_level.txt
+[11.652s] writing manifest file '../../../build/talker_example/talker_example.egg-info/SOURCES.txt'
+[11.689s] reading manifest file '../../../build/talker_example/talker_example.egg-info/SOURCES.txt'
+[11.691s] writing manifest file '../../../build/talker_example/talker_example.egg-info/SOURCES.txt'
+[11.691s] running build
+[11.691s] running build_py
+[11.691s] creating /home/beniamino/turtlebot4/build/talker_example/build
+[11.691s] creating /home/beniamino/turtlebot4/build/talker_example/build/lib
+[11.691s] creating /home/beniamino/turtlebot4/build/talker_example/build/lib/talker_example
+[11.691s] copying talker_example/talker_node.py -> /home/beniamino/turtlebot4/build/talker_example/build/lib/talker_example
+[11.692s] copying talker_example/listener_node.py -> /home/beniamino/turtlebot4/build/talker_example/build/lib/talker_example
+[11.692s] copying talker_example/__init__.py -> /home/beniamino/turtlebot4/build/talker_example/build/lib/talker_example
+[11.692s] running install
+[11.696s] running install_lib
+[11.716s] creating /home/beniamino/turtlebot4/install/talker_example/lib/python3.10/site-packages/talker_example
+[11.716s] copying /home/beniamino/turtlebot4/build/talker_example/build/lib/talker_example/talker_node.py -> /home/beniamino/turtlebot4/install/talker_example/lib/python3.10/site-packages/talker_example
+[11.716s] copying /home/beniamino/turtlebot4/build/talker_example/build/lib/talker_example/listener_node.py -> /home/beniamino/turtlebot4/install/talker_example/lib/python3.10/site-packages/talker_example
+[11.717s] copying /home/beniamino/turtlebot4/build/talker_example/build/lib/talker_example/__init__.py -> /home/beniamino/turtlebot4/install/talker_example/lib/python3.10/site-packages/talker_example
+[11.717s] byte-compiling /home/beniamino/turtlebot4/install/talker_example/lib/python3.10/site-packages/talker_example/talker_node.py to talker_node.cpython-310.pyc
+[11.717s] byte-compiling /home/beniamino/turtlebot4/install/talker_example/lib/python3.10/site-packages/talker_example/listener_node.py to listener_node.cpython-310.pyc
+[11.717s] byte-compiling /home/beniamino/turtlebot4/install/talker_example/lib/python3.10/site-packages/talker_example/__init__.py to __init__.cpython-310.pyc
+[11.717s] running install_data
+[11.717s] creating /home/beniamino/turtlebot4/install/talker_example/share/ament_index
+[11.717s] creating /home/beniamino/turtlebot4/install/talker_example/share/ament_index/resource_index
+[11.718s] creating /home/beniamino/turtlebot4/install/talker_example/share/ament_index/resource_index/packages
+[11.718s] copying resource/talker_example -> /home/beniamino/turtlebot4/install/talker_example/share/ament_index/resource_index/packages
+[11.718s] copying package.xml -> /home/beniamino/turtlebot4/install/talker_example/share/talker_example
+[11.718s] running install_egg_info
+[11.737s] Copying ../../../build/talker_example/talker_example.egg-info to /home/beniamino/turtlebot4/install/talker_example/lib/python3.10/site-packages/talker_example-0.0.0-py3.10.egg-info
+[11.738s] running install_scripts
+[11.969s] Installing listener script to /home/beniamino/turtlebot4/install/talker_example/lib/talker_example
+[11.970s] Installing talker script to /home/beniamino/turtlebot4/install/talker_example/lib/talker_example
+[11.970s] writing list of installed files to '/home/beniamino/turtlebot4/build/talker_example/install.log'
+[12.212s] Invoked command in '/home/beniamino/turtlebot4/diem_turtlebot_ws/src/talker_example' returned '0': PYTHONPATH=/home/beniamino/turtlebot4/build/talker_example/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/beniamino/turtlebot4/install/talker_example/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated setup.py egg_info --egg-base ../../../build/talker_example build --build-base /home/beniamino/turtlebot4/build/talker_example/build install --record /home/beniamino/turtlebot4/build/talker_example/install.log --single-version-externally-managed install_data

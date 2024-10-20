@@ -1,0 +1,38 @@
+[1.230s] Invoking command in '/home/beniamino/turtlebot4/diem_turtlebot_ws/src/nav_pkg': PYTHONPATH=/home/beniamino/turtlebot4/build/nav_pkg/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/beniamino/turtlebot4/install/nav_pkg/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated setup.py egg_info --egg-base ../../../build/nav_pkg build --build-base /home/beniamino/turtlebot4/build/nav_pkg/build install --record /home/beniamino/turtlebot4/build/nav_pkg/install.log --single-version-externally-managed install_data
+[1.481s] running egg_info
+[1.482s] creating ../../../build/nav_pkg/nav_pkg.egg-info
+[1.502s] writing ../../../build/nav_pkg/nav_pkg.egg-info/PKG-INFO
+[1.502s] writing dependency_links to ../../../build/nav_pkg/nav_pkg.egg-info/dependency_links.txt
+[1.502s] writing entry points to ../../../build/nav_pkg/nav_pkg.egg-info/entry_points.txt
+[1.503s] writing requirements to ../../../build/nav_pkg/nav_pkg.egg-info/requires.txt
+[1.503s] writing top-level names to ../../../build/nav_pkg/nav_pkg.egg-info/top_level.txt
+[1.503s] writing manifest file '../../../build/nav_pkg/nav_pkg.egg-info/SOURCES.txt'
+[1.545s] reading manifest file '../../../build/nav_pkg/nav_pkg.egg-info/SOURCES.txt'
+[1.545s] writing manifest file '../../../build/nav_pkg/nav_pkg.egg-info/SOURCES.txt'
+[1.546s] running build
+[1.546s] running build_py
+[1.546s] creating /home/beniamino/turtlebot4/build/nav_pkg/build
+[1.546s] creating /home/beniamino/turtlebot4/build/nav_pkg/build/lib
+[1.546s] creating /home/beniamino/turtlebot4/build/nav_pkg/build/lib/nav_pkg
+[1.546s] copying nav_pkg/obstacle_avoidance.py -> /home/beniamino/turtlebot4/build/nav_pkg/build/lib/nav_pkg
+[1.546s] copying nav_pkg/nav_step.py -> /home/beniamino/turtlebot4/build/nav_pkg/build/lib/nav_pkg
+[1.547s] copying nav_pkg/__init__.py -> /home/beniamino/turtlebot4/build/nav_pkg/build/lib/nav_pkg
+[1.547s] copying nav_pkg/scheletrizza_mappa.py -> /home/beniamino/turtlebot4/build/nav_pkg/build/lib/nav_pkg
+[1.547s] copying nav_pkg/(non_va_bene)crea_mappa_topologica.py -> /home/beniamino/turtlebot4/build/nav_pkg/build/lib/nav_pkg
+[1.547s] copying nav_pkg/odom.py -> /home/beniamino/turtlebot4/build/nav_pkg/build/lib/nav_pkg
+[1.547s] copying nav_pkg/simple_nav.py -> /home/beniamino/turtlebot4/build/nav_pkg/build/lib/nav_pkg
+[1.548s] running install
+[1.553s] running install_lib
+[1.574s] running install_data
+[1.575s] copying resource/nav_pkg -> /home/beniamino/turtlebot4/install/nav_pkg/share/ament_index/resource_index/packages
+[1.575s] copying package.xml -> /home/beniamino/turtlebot4/install/nav_pkg/share/nav_pkg
+[1.575s] running install_egg_info
+[1.595s] removing '/home/beniamino/turtlebot4/install/nav_pkg/lib/python3.10/site-packages/nav_pkg-0.0.0-py3.10.egg-info' (and everything under it)
+[1.595s] Copying ../../../build/nav_pkg/nav_pkg.egg-info to /home/beniamino/turtlebot4/install/nav_pkg/lib/python3.10/site-packages/nav_pkg-0.0.0-py3.10.egg-info
+[1.596s] running install_scripts
+[1.766s] Installing nav_step script to /home/beniamino/turtlebot4/install/nav_pkg/lib/nav_pkg
+[1.766s] Installing obj_avoidance script to /home/beniamino/turtlebot4/install/nav_pkg/lib/nav_pkg
+[1.767s] Installing odom script to /home/beniamino/turtlebot4/install/nav_pkg/lib/nav_pkg
+[1.767s] Installing simple_nav script to /home/beniamino/turtlebot4/install/nav_pkg/lib/nav_pkg
+[1.767s] writing list of installed files to '/home/beniamino/turtlebot4/build/nav_pkg/install.log'
+[1.802s] Invoked command in '/home/beniamino/turtlebot4/diem_turtlebot_ws/src/nav_pkg' returned '0': PYTHONPATH=/home/beniamino/turtlebot4/build/nav_pkg/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/beniamino/turtlebot4/install/nav_pkg/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated setup.py egg_info --egg-base ../../../build/nav_pkg build --build-base /home/beniamino/turtlebot4/build/nav_pkg/build install --record /home/beniamino/turtlebot4/build/nav_pkg/install.log --single-version-externally-managed install_data
