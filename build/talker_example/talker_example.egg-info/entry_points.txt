@@ -1,3 +1,0 @@
-[console_scripts]
-listener = talker_example.listener_node:main
-talker = talker_example.talker_node:main
