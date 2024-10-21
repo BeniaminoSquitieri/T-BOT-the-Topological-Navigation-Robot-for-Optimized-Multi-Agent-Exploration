@@ -1,7 +1,7 @@
 # Generazione di una Mappa Topologica da una Mappa di Occupazione
 
 ## Introduzione
-Questo progetto ha lo scopo di generare una mappa topologica a partire da una mappa di occupazione (occupancy grid map). La mappa topologica risultante è essenziale per applicazioni di robotica, come la navigazione autonoma e la pianificazione dei percorsi in ambienti indoor complessi.
+Il seguente script ha lo scopo di generare una mappa topologica a partire da una mappa di occupazione (occupancy grid map). La mappa topologica risultante è essenziale per applicazioni di robotica, come la navigazione autonoma e la pianificazione dei percorsi in ambienti indoor complessi.
 
 ## Descrizione Generale
 Il processo consiste in una serie di passaggi che trasformano la mappa di occupazione in una rappresentazione topologica utilizzabile:
@@ -18,7 +18,6 @@ Il processo consiste in una serie di passaggi che trasformano la mappa di occupa
 
 ### 1. Caricamento della Mappa di Occupazione
 - **Obiettivo**: Caricare l'immagine della mappa in scala di grigi.
-- **Motivazione**: Lavorare con immagini in scala di grigi semplifica l'elaborazione e l'analisi successiva.
 
 ### 2. Creazione della Mappa Binaria
 - **Obiettivo**: Convertire l'immagine in una mappa binaria dove:
@@ -96,6 +95,18 @@ Eseguire il seguente comando per installare tutte le librerie necessarie:
 ```bash
 pip install numpy opencv-python networkx scipy scikit-image Pillow PyYAML
 ```
+### Eseguire il file
+Senza specificare il numero massimo di nodi (userà tutti i nodi disponibili):
+
+```bash
+py .\topological_map.py diem_map.pgm
+``` 
+### Eseguire il file
+Specificando il numero massimo di nodi (ad esempio, 50):
+
+```bash
+py .\topological_map.py diem_map.pgm --max_nodes 50
+``` 
 
 ### Preparazione dell'Ambiente: 
 - Assicurarsi che l'immagine della mappa di occupazione sia disponibile e accessibile.
@@ -106,37 +117,9 @@ pip install numpy opencv-python networkx scipy scikit-image Pillow PyYAML
 - max_nodes: Il numero massimo di nodi da includere nel grafo topologico (ad esempio, 50).
 
 ### Visualizzazione dei Risultati:
-- Al termine dell'esecuzione, verrà creata una cartella con il nome della mappa. - - - - All'interno della cartella troverete:
+- Al termine dell'esecuzione, verrà creata una cartella con il nome della mappa. 
+- All'interno della cartella troverete:
 
-- Le immagini dei vari passaggi del processo.
-- La mappa topologica con i nodi sovrapposti.
-- Il file YAML per l'utilizzo in ROS2.
-
-
-## Spiegazione dei Componenti Chiave
-### Caricamento e Preprocessing
-- Caricamento della mappa: Utilizza OpenCV per leggere l'immagine in scala di grigi.
-- Binarizzazione: Applica una soglia per distinguere tra ostacoli e spazi liberi.
-
-### Calcolo delle Distanze e Linee di Voronoi
-- Mappa delle Distanze: Utilizza la trasformata della distanza euclidea per calcolare le distanze dai pixel degli ostacoli.
-- Linee di Voronoi: Identifica le regioni equidistanti dagli ostacoli utilizzando un filtro locale.
-
-### Scheletrizzazione
-- Necessità della Scheletrizzazione:
-1) Riduce le linee di Voronoi spesse a linee sottili.
-2) Mantiene la connettività e la struttura topologica.
-- Vantaggi:
-
-1) Facilita l'identificazione accurata di nodi e percorsi.
-2) Migliora l'efficienza nella costruzione del grafo.
-
-### Creazione del Grafo Topologico
-- Identificazione dei Nodi: Utilizza la convoluzione per contare i vicini di ogni pixel nello scheletro. I nodi sono punti con un numero di vicini diverso da 2.
-- Distribuzione Uniforme: Suddivide la mappa in una griglia per selezionare nodi distribuiti uniformemente.
-- Connessione dei Nodi: Verifica se esiste un percorso nello scheletro tra i nodi e aggiunge archi nel grafo in base ai percorsi esistenti.
-
-### Salvataggio e Output
-- Immagini Intermedie: Consentono di verificare visivamente ogni passaggio.
-- Mappa Finale con Nodi: Mostra il risultato del processo e la posizione dei nodi.
-- File YAML: Fornisce le informazioni necessarie per utilizzare la mappa in sistemi robotici come ROS2.
+1. Le immagini dei vari passaggi del processo.
+2. La mappa topologica con i nodi sovrapposti.
+3. Il file YAML per l'utilizzo in ROS2.

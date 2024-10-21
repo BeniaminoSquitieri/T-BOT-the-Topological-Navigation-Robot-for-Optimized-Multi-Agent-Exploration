@@ -1,5 +1,6 @@
 # Importazione delle librerie necessarie
-import os  # Modulo per interagire con il sistema operativo (creazione di directory, gestione dei percorsi)
+import os  # Modulo per interagire con il sistema operativo
+import sys  # Modulo per accedere ai parametri passati da riga di comando
 import numpy as np  # Libreria per operazioni numeriche avanzate su array
 import cv2  # Libreria OpenCV per l'elaborazione delle immagini
 import networkx as ntx  # Libreria per la creazione e manipolazione di grafi
@@ -7,6 +8,8 @@ from scipy.ndimage import distance_transform_edt, convolve, generic_filter  # Fu
 from skimage.morphology import skeletonize  # Funzione per scheletrizzare immagini binarie
 from PIL import Image  # Libreria per la manipolazione delle immagini
 import yaml  # Libreria per leggere e scrivere file YAML
+import argparse  # Modulo per gestire gli argomenti da riga di comando
+
 # --- Funzioni di base ---
 
 def load_map(image_path):
@@ -69,7 +72,6 @@ def create_voronoi_lines(distance_map):
     kernel = np.array([[1, 1, 1],
                        [1, 0, 1],
                        [1, 1, 1]], dtype=bool)
-
 
     # Definisce una funzione che calcola la differenza tra il valore massimo e minimo nella finestra
     def local_range(values):
@@ -140,14 +142,15 @@ def check_line_passes_through_skeleton(node1, node2, skeleton):
 
 # --- Creazione del grafo topologico con nodi distribuiti uniformemente su X e Y ---
 
-def create_topological_graph_using_skeleton(voronoi_skeleton, max_nodes=50):
+def create_topological_graph_using_skeleton(voronoi_skeleton, max_nodes=None):
     """
     Crea un grafo topologico basato sullo scheletro di Voronoi,
     con nodi distribuiti uniformemente sia lungo l'asse X che Y.
 
     Parameters:
         voronoi_skeleton (numpy.ndarray): L'immagine dello scheletro di Voronoi.
-        max_nodes (int): Numero massimo di nodi da inserire nel grafo.
+        max_nodes (int, optional): Numero massimo di nodi da inserire nel grafo.
+                                   Se None, non c'è limite al numero di nodi.
 
     Returns:
         networkx.Graph: Il grafo topologico creato.
@@ -175,46 +178,50 @@ def create_topological_graph_using_skeleton(voronoi_skeleton, max_nodes=50):
         print("Nessun nodo identificato nello scheletro.")
         return topo_map
 
-    # Converti la lista di nodi in un array per facilità di manipolazione
-    node_array = np.array(node_list)
+    # Se non è specificato un limite massimo di nodi, utilizza tutti i nodi identificati
+    if max_nodes is None:
+        selected_nodes = node_list
+    else:
+        # Converti la lista di nodi in un array per facilità di manipolazione
+        node_array = np.array(node_list)
 
-    # Calcola il numero di celle della griglia in base a max_nodes
-    num_cells = int(np.sqrt(max_nodes))
-    if num_cells == 0:
-        num_cells = 1  # Assicura almeno una cella
+        # Calcola il numero di celle della griglia in base a max_nodes
+        num_cells = int(np.sqrt(max_nodes))
+        if num_cells == 0:
+            num_cells = 1  # Assicura almeno una cella
 
-    # Ottieni i limiti dell'immagine
-    rows, cols = voronoi_skeleton.shape
+        # Ottieni i limiti dell'immagine
+        rows, cols = voronoi_skeleton.shape
 
-    # Calcola le dimensioni delle celle della griglia
-    cell_height = rows / num_cells
-    cell_width = cols / num_cells
+        # Calcola le dimensioni delle celle della griglia
+        cell_height = rows / num_cells
+        cell_width = cols / num_cells
 
-    selected_nodes = []
+        selected_nodes = []
 
-    # Crea una griglia bidimensionale e seleziona un nodo per cella
-    for i in range(num_cells):
-        for j in range(num_cells):
-            # Definisce i limiti della cella
-            x_min = int(i * cell_height)
-            x_max = int((i + 1) * cell_height)
-            y_min = int(j * cell_width)
-            y_max = int((j + 1) * cell_width)
+        # Crea una griglia bidimensionale e seleziona un nodo per cella
+        for i in range(num_cells):
+            for j in range(num_cells):
+                # Definisce i limiti della cella
+                x_min = int(i * cell_height)
+                x_max = int((i + 1) * cell_height)
+                y_min = int(j * cell_width)
+                y_max = int((j + 1) * cell_width)
 
-            # Trova i nodi all'interno della cella
-            nodes_in_cell = node_array[(node_array[:, 0] >= x_min) & (node_array[:, 0] < x_max) &
-                                       (node_array[:, 1] >= y_min) & (node_array[:, 1] < y_max)]
+                # Trova i nodi all'interno della cella
+                nodes_in_cell = node_array[(node_array[:, 0] >= x_min) & (node_array[:, 0] < x_max) &
+                                           (node_array[:, 1] >= y_min) & (node_array[:, 1] < y_max)]
 
-            # Se ci sono nodi nella cella, aggiungi uno di essi alla lista dei nodi selezionati
-            if len(nodes_in_cell) > 0:
-                selected_nodes.append(tuple(nodes_in_cell[0]))  # Puoi anche scegliere un nodo casuale o centrale
+                # Se ci sono nodi nella cella, aggiungi uno di essi alla lista dei nodi selezionati
+                if len(nodes_in_cell) > 0:
+                    selected_nodes.append(tuple(nodes_in_cell[0]))  # Puoi anche scegliere un nodo casuale o centrale
 
-            # Interrompe se abbiamo raggiunto il numero massimo di nodi
-            if len(selected_nodes) >= max_nodes:
-                break
-        else:
-            continue
-        break  # Esce dai cicli se il numero massimo di nodi è raggiunto
+                # Interrompe se abbiamo raggiunto il numero massimo di nodi
+                if len(selected_nodes) >= max_nodes:
+                    break
+            else:
+                continue
+            break  # Esce dai cicli se il numero massimo di nodi è raggiunto
 
     # Aggiunge i nodi selezionati al grafo topologico
     topo_map.add_nodes_from(selected_nodes)
@@ -309,13 +316,14 @@ def create_map_directory(map_name):
 
 # --- Funzione principale ---
 
-def process_map(image_path, max_nodes):
+def process_map(image_path, max_nodes=None):
     """
     Coordina tutti i passaggi necessari per processare la mappa e generare i file finali.
 
     Parameters:
         image_path (str): Il percorso dell'immagine della mappa da processare.
-        max_nodes (int): Numero massimo di nodi da inserire nel grafo topologico.
+        max_nodes (int, optional): Numero massimo di nodi da inserire nel grafo topologico.
+                                   Se None, non c'è limite al numero di nodi.
     """
     # Estrae il nome della mappa dall'immagine
     map_name = os.path.splitext(os.path.basename(image_path))[0]
@@ -359,8 +367,16 @@ def process_map(image_path, max_nodes):
     save_as_yaml(os.path.join(map_directory, f"{map_name}_topologica_scheletro_nodi.yaml"),
                  f"{map_name}_topologica_scheletro_nodi.pgm")
 
-# Esegui il codice
+# --- Esecuzione del codice ---
+
 if __name__ == "__main__":
-    image_path = 'diem_map.pgm'  # Sostituisci con il percorso corretto della mappa di input
-    max_nodes = 50  # Numero massimo di nodi da inserire nel grafo topologico
-    process_map(image_path, max_nodes)  # Esegue il processo sulla mappa specificata
+    # Crea il parser degli argomenti
+    parser = argparse.ArgumentParser(description="Generazione di una mappa topologica da una mappa di occupazione.")
+    parser.add_argument('image_path', type=str, help='Percorso dell\'immagine della mappa da processare.')
+    parser.add_argument('--max_nodes', type=int, default=None, help='Numero massimo di nodi nel grafo topologico. Se non specificato, non c\'è limite.')
+
+    # Parsea gli argomenti
+    args = parser.parse_args()
+
+    # Esegue il processo sulla mappa specificata
+    process_map(args.image_path, max_nodes=args.max_nodes)
