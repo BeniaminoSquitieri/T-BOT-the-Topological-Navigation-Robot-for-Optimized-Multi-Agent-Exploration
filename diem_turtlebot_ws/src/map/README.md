@@ -108,6 +108,25 @@ Specificando il numero massimo di nodi (ad esempio, 50):
 py .\topological_map.py diem_map.pgm --max_nodes 50
 ``` 
 
+### Try the map in RVIZ
+Per provare la mappa in RVIZ esegui i seguenti comandi: 
+Assicurarsi di stare nella directory dove è presente la mappa oppure in alternativa indicare il percorso della mappa.
+
+Shell 1: 
+
+```bash
+ros2 launch turtlebot4_navigation localization.launch.py map:=<map_yaml_file_path>
+``` 
+Shell 2: 
+
+```bash
+ros2 launch turtlebot4_navigation nav2.launch.py
+``` 
+Shell 3: 
+
+```bash
+ros2 launch turtlebot4_viz view_robot.launch.py
+``` 
 ### Preparazione dell'Ambiente: 
 - Assicurarsi che l'immagine della mappa di occupazione sia disponibile e accessibile.
 - Sostituire 'diem_map.pgm' nel codice con il percorso corretto della vostra mappa.
