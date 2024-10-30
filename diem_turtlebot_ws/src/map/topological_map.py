@@ -209,7 +209,7 @@ def create_topological_graph_using_skeleton(voronoi_skeleton, max_nodes=None):
                 y_max = int((j + 1) * cell_width)
 
                 # Trova i nodi all'interno della cella
-                nodes_in_cell = node_array[(node_array[:, 0] >= x_min) & (node_array[:, 0] < x_max) &
+                nodes_in_cell = node_array[(node_array[:, 0] >= x_min) & (node_array[:, 0] < x_max) & \
                                            (node_array[:, 1] >= y_min) & (node_array[:, 1] < y_max)]
 
                 # Se ci sono nodi nella cella, aggiungi uno di essi alla lista dei nodi selezionati
@@ -237,6 +237,61 @@ def create_topological_graph_using_skeleton(voronoi_skeleton, max_nodes=None):
     print(f"Numero totale di nodi creati: {len(topo_map.nodes())}")
     print(f"Numero totale di archi creati: {len(topo_map.edges())}")
     return topo_map  # Restituisce il grafo topologico
+
+# --- Funzione per convertire i valori in formati Python standard ---
+def numpy_to_python(obj):
+    """
+    Converte i tipi NumPy in tipi Python standard.
+    Parameters:
+        obj: Oggetto NumPy (array o valore).
+    Returns:
+        Oggetto convertito in un tipo standard Python (float o int).
+    """
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()  # Se è un array NumPy, lo converte in lista
+    elif isinstance(obj, np.generic):
+        return obj.item()  # Se è un oggetto NumPy generico, lo converte in un valore Python
+    return obj
+
+# --- Funzione per salvare i waypoints con label in un file YAML ---
+
+def save_waypoints_as_yaml(waypoints, filename):
+    """
+    Salva i waypoints con label in un file YAML.
+
+    Parameters:
+        waypoints (list): Lista dei waypoints (x, y) da salvare.
+        filename (str): Il percorso del file YAML in cui salvare i waypoints.
+    """
+    # Crea un dizionario per i dati dei waypoints, assegnando un label a ciascun nodo
+    waypoints_data = {"waypoints": [{"label": f"node_{i+1}", "x": numpy_to_python(wp[0]), "y": numpy_to_python(wp[1])} 
+                                    for i, wp in enumerate(waypoints)]}
+
+    # Salva il dizionario in formato YAML
+    with open(filename, 'w') as yaml_file:
+        yaml.dump(waypoints_data, yaml_file, default_flow_style=False)
+
+# --- Funzione di conversione dei nodi in waypoints ---
+
+def convert_nodes_to_waypoints(topo_map, resolution, origin):
+    """
+    Converte i nodi del grafo in waypoints nel sistema di riferimento della mappa.
+
+    Parameters:
+        topo_map (networkx.Graph): Il grafo topologico con i nodi.
+        resolution (float): La risoluzione della mappa (metri per pixel).
+        origin (tuple): L'origine della mappa nel sistema di riferimento (x, y, theta).
+
+    Returns:
+        list: Una lista di waypoints (x, y) nel sistema di riferimento della mappa.
+    """
+    waypoints = []
+    for node in topo_map.nodes():
+        # Converte le coordinate dei nodi in waypoints nel sistema di riferimento della mappa
+        x_map = origin[0] + node[1] * resolution
+        y_map = origin[1] + node[0] * resolution
+        waypoints.append((x_map, y_map))
+    return waypoints
 
 # --- Funzione per salvare un'immagine PGM ---
 
@@ -273,6 +328,22 @@ def save_topological_map_with_nodes(skeleton, topo_map, pgm_filename):
 
     # Salva l'immagine con i nodi disegnati
     Image.fromarray(skeleton_with_nodes).save(pgm_filename)
+
+# --- Funzione per convertire i valori in formati Python standard ---
+def numpy_to_python(obj):
+    """
+    Converte i tipi NumPy in tipi Python standard.
+    Parameters:
+        obj: Oggetto NumPy (array o valore).
+    Returns:
+        Oggetto convertito in un tipo standard Python (float o int).
+    """
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()  # Se è un array NumPy, lo converte in lista
+    elif isinstance(obj, np.generic):
+        return obj.item()  # Se è un oggetto NumPy generico, lo converte in un valore Python
+    return obj
+
 
 # --- Funzione per salvare il file YAML associato ---
 
@@ -363,7 +434,14 @@ def process_map(image_path, max_nodes=None):
     save_topological_map_with_nodes(voronoi_skeleton, topo_map,
                                     os.path.join(map_directory, f"{map_name}_topologica_scheletro_nodi.pgm"))
 
-    # Passo 8: Salva il file YAML per ROS2
+    # Passo 8: Converte i nodi del grafo in waypoints
+    waypoints = convert_nodes_to_waypoints(topo_map, resolution=0.05, origin=(-32.507755, -27.073547, 0))
+    print(f"Waypoints generati: {waypoints}")
+
+    # Passo 9: Salva i waypoints in un file YAML
+    save_waypoints_as_yaml(waypoints, os.path.join(map_directory, f"{map_name}_waypoints.yaml"))
+
+    # Passo 10: Salva il file YAML per ROS2
     save_as_yaml(os.path.join(map_directory, f"{map_name}_topologica_scheletro_nodi.yaml"),
                  f"{map_name}_topologica_scheletro_nodi.pgm")
 
