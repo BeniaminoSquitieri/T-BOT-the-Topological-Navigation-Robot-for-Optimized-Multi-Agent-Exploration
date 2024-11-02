@@ -9,6 +9,7 @@ from PIL import Image  # Libreria per la manipolazione delle immagini
 import yaml  # Libreria per leggere e scrivere file YAML
 import argparse  # Modulo per gestire gli argomenti da riga di comando
 
+
 # --- Funzioni di base ---
 
 def load_map(image_path):
@@ -27,6 +28,38 @@ def load_map(image_path):
         # Solleva un'eccezione se l'immagine non può essere caricata
         raise FileNotFoundError(f"Errore: impossibile aprire il file {image_path}")
     return occupancy_grid  # Restituisce l'immagine caricata
+
+def clean_map(occupancy_grid):
+    """
+    Applica trasformazioni morfologiche per rappresentare la mappa in forma di rettangoli orizzontali e verticali.
+
+    Parameters:
+        occupancy_grid (numpy.ndarray): L'immagine in scala di grigi della mappa.
+
+    Returns:
+        numpy.ndarray: La mappa trasformata in rettangoli.
+    """
+    # Kernel rettangolare grande per la chiusura
+    kernel_close = cv2.getStructuringElement(cv2.MORPH_RECT, (60, 60)) #Questa chiusura iniziale utilizza un kernel grande, ideale per unire piccoli spazi tra rettangoli.
+    closed_map = cv2.morphologyEx(occupancy_grid, cv2.MORPH_CLOSE, kernel_close)
+
+    # Dilatazione per ampliare i rettangoli, mantenendo direzioni preferenziali
+    kernel_dilate = cv2.getStructuringElement(cv2.MORPH_RECT, (25, 25))  # Più ampio in una direzione La dilatazione ha un kernel orientato più largo in una direzione, il che aiuta a espandere i rettangoli nelle direzioni orizzontale o verticale.
+    dilated_map = cv2.dilate(closed_map, kernel_dilate, iterations=1)
+
+    # Apertura per rimuovere piccole irregolarità e sporgenze
+    kernel_open = cv2.getStructuringElement(cv2.MORPH_RECT, (40, 65)) # L'apertura con un kernel più piccolo rimuove dettagli indesiderati lasciando intatte le forme più grandi.
+    opened_map = cv2.morphologyEx(dilated_map, cv2.MORPH_OPEN, kernel_open)
+
+    # Erosione finale per riportare alla forma originale mantenendo i rettangoli
+    kernel_erode = cv2.getStructuringElement(cv2.MORPH_RECT, (30, 30)) # L'erosione finale aiuta a ripulire i bordi e ridurre la struttura alla sua dimensione rettangolare più coerente.
+    final_map = cv2.erode(opened_map, kernel_erode, iterations=1)
+
+    return final_map
+
+
+
+
 
 def create_binary_map(occupancy_grid):
     """
@@ -103,6 +136,85 @@ def skeletonize_voronoi(voronoi_map):
 
 # --- Funzione di verifica del percorso attraverso pixel bianchi ---
 
+def create_topological_graph_using_skeleton(voronoi_skeleton, max_nodes=None, merge_threshold=10, max_connection_distance=100000):
+    """
+    Crea un grafo topologico basato sullo scheletro di Voronoi,
+    con nodi distribuiti uniformemente sia lungo l'asse X che Y.
+    I nodi vicini entro una certa soglia vengono fusi.
+
+    Parameters:
+        voronoi_skeleton (numpy.ndarray): L'immagine dello scheletro di Voronoi.
+        max_nodes (int, optional): Numero massimo di nodi da inserire nel grafo.
+                                   Se None, non c'è limite al numero di nodi.
+        merge_threshold (int): Distanza massima entro la quale i nodi vengono fusi (in pixel).
+        max_connection_distance (int): Distanza massima entro la quale connettere i nodi con un arco (in pixel).
+
+    Returns:
+        networkx.Graph: Il grafo topologico creato.
+    """
+    topo_map = ntx.Graph()  # Crea un nuovo grafo vuoto
+
+    # Funzione per calcolare la distanza euclidea tra due punti
+    def distance(p1, p2):
+        return np.sqrt((p1[0] - p2[0]) ** 2 + (p1[1] - p2[1]) ** 2)
+
+    # Definisce un kernel per contare i vicini (esclude il pixel centrale)
+    kernel = np.array([[1, 1, 1],
+                       [1, 0, 1],
+                       [1, 1, 1]], dtype=int)
+
+    # Conta il numero di vicini per ogni pixel dello scheletro
+    neighbor_count = convolve(voronoi_skeleton.astype(int), kernel, mode='constant', cval=0)
+
+    # Identifica i nodi agli incroci o estremità (dove il numero di vicini è diverso da 2)
+    node_positions = np.where((voronoi_skeleton == 1) & (neighbor_count != 2))
+    node_list = list(zip(node_positions[0], node_positions[1]))
+
+    print(f"Numero di nodi identificati inizialmente: {len(node_list)}")
+
+    # Funzione per fondere i nodi vicini in base alla soglia di distanza
+    fused_nodes = []
+    while node_list:
+        node = node_list.pop(0)
+        close_nodes = [node]  # Inizializza con il nodo corrente
+        # Trova tutti i nodi vicini che rientrano nella soglia di distanza
+        node_list = [n for n in node_list if distance(node, n) > merge_threshold or close_nodes.append(n)]
+        # Calcola il centroide dei nodi vicini e aggiunge il nodo fuso
+        avg_x = int(np.mean([n[0] for n in close_nodes]))
+        avg_y = int(np.mean([n[1] for n in close_nodes]))
+        fused_nodes.append((avg_x, avg_y))
+
+    print(f"Numero di nodi dopo la fusione: {len(fused_nodes)}")
+
+    # Aggiunge i nodi fusi al grafo
+    topo_map.add_nodes_from(fused_nodes)
+
+    # Aggiunge archi tra i nodi se esiste un percorso lungo lo scheletro o se entro la distanza massima
+    for i in range(len(fused_nodes) - 1):
+        for j in range(i + 1, len(fused_nodes)):
+            if distance(fused_nodes[i], fused_nodes[j]) <= max_connection_distance:
+                # Controlla se esiste un altro nodo più vicino a i rispetto a j
+                intermediate_found = False
+                for k in range(len(fused_nodes)):
+                    if k != i and k != j:
+                        if distance(fused_nodes[i], fused_nodes[k]) < distance(fused_nodes[i], fused_nodes[j]):
+                            intermediate_found = True
+                            break
+                
+                # Solo se non c'è un nodo intermedio, verifica il percorso e aggiunge l'arco
+                if not intermediate_found:
+                    if check_line_passes_through_skeleton(fused_nodes[i], fused_nodes[j], voronoi_skeleton):
+                        topo_map.add_edge(fused_nodes[i], fused_nodes[j])
+                        print(f"Arco creato tra {fused_nodes[i]} e {fused_nodes[j]} (scheletro continuo)")
+                    else:
+                        topo_map.add_edge(fused_nodes[i], fused_nodes[j])
+                        print(f"Arco creato tra {fused_nodes[i]} e {fused_nodes[j]} (entro la distanza massima)")
+
+    print(f"Numero totale di nodi creati: {len(topo_map.nodes())}")
+    print(f"Numero totale di archi creati: {len(topo_map.edges())}")
+    return topo_map
+
+# Funzione di controllo del percorso attraverso lo scheletro
 def check_line_passes_through_skeleton(node1, node2, skeleton):
     """
     Verifica se una linea tra due nodi passa interamente attraverso lo scheletro.
@@ -134,108 +246,8 @@ def check_line_passes_through_skeleton(node1, node2, skeleton):
     y_vals = y_vals[valid_indices]
 
     # Verifica se tutti i punti lungo la linea appartengono allo scheletro
-    if np.all(skeleton[x_vals, y_vals]):
-        return True  # La linea passa interamente attraverso lo scheletro
-    else:
-        return False  # La linea non passa interamente attraverso lo scheletro
+    return np.all(skeleton[x_vals, y_vals] == 1)
 
-# --- Creazione del grafo topologico con nodi distribuiti uniformemente su X e Y ---
-
-def create_topological_graph_using_skeleton(voronoi_skeleton, max_nodes=None):
-    """
-    Crea un grafo topologico basato sullo scheletro di Voronoi,
-    con nodi distribuiti uniformemente sia lungo l'asse X che Y.
-
-    Parameters:
-        voronoi_skeleton (numpy.ndarray): L'immagine dello scheletro di Voronoi.
-        max_nodes (int, optional): Numero massimo di nodi da inserire nel grafo.
-                                   Se None, non c'è limite al numero di nodi.
-
-    Returns:
-        networkx.Graph: Il grafo topologico creato.
-    """
-    topo_map = ntx.Graph()  # Crea un nuovo grafo vuoto
-
-    # Definisce un kernel per contare i vicini (esclude il pixel centrale)
-    kernel = np.array([[1, 1, 1],
-                       [1, 0, 1],
-                       [1, 1, 1]], dtype=int)
-
-    # Conta il numero di vicini per ogni pixel dello scheletro
-    neighbor_count = convolve(voronoi_skeleton.astype(int), kernel, mode='constant', cval=0)
-
-    # Identifica i nodi agli incroci o estremità (dove il numero di vicini è diverso da 2)
-    node_positions = np.where((voronoi_skeleton == 1) & (neighbor_count != 2))
-
-    # Crea una lista di coordinate dei nodi
-    node_list = list(zip(node_positions[0], node_positions[1]))
-
-    print(f"Numero di nodi identificati: {len(node_list)}")
-
-    # Se non ci sono nodi, restituisce il grafo vuoto
-    if len(node_list) == 0:
-        print("Nessun nodo identificato nello scheletro.")
-        return topo_map
-
-    # Se non è specificato un limite massimo di nodi, utilizza tutti i nodi identificati
-    if max_nodes is None:
-        selected_nodes = node_list
-    else:
-        # Converti la lista di nodi in un array per facilità di manipolazione
-        node_array = np.array(node_list)
-
-        # Calcola il numero di celle della griglia in base a max_nodes
-        num_cells = int(np.sqrt(max_nodes))
-        if num_cells == 0:
-            num_cells = 1  # Assicura almeno una cella
-
-        # Ottieni i limiti dell'immagine
-        rows, cols = voronoi_skeleton.shape
-
-        # Calcola le dimensioni delle celle della griglia
-        cell_height = rows / num_cells
-        cell_width = cols / num_cells
-
-        selected_nodes = []
-
-        # Crea una griglia bidimensionale e seleziona un nodo per cella
-        for i in range(num_cells):
-            for j in range(num_cells):
-                # Definisce i limiti della cella
-                x_min = int(i * cell_height)
-                x_max = int((i + 1) * cell_height)
-                y_min = int(j * cell_width)
-                y_max = int((j + 1) * cell_width)
-
-                # Trova i nodi all'interno della cella
-                nodes_in_cell = node_array[(node_array[:, 0] >= x_min) & (node_array[:, 0] < x_max) & \
-                                           (node_array[:, 1] >= y_min) & (node_array[:, 1] < y_max)]
-
-                # Se ci sono nodi nella cella, aggiungi uno di essi alla lista dei nodi selezionati
-                if len(nodes_in_cell) > 0:
-                    selected_nodes.append(tuple(nodes_in_cell[0]))  # Puoi anche scegliere un nodo casuale o centrale
-
-                # Interrompe se abbiamo raggiunto il numero massimo di nodi
-                if len(selected_nodes) >= max_nodes:
-                    break
-            else:
-                continue
-            break  # Esce dai cicli se il numero massimo di nodi è raggiunto
-
-    # Aggiunge i nodi selezionati al grafo topologico
-    topo_map.add_nodes_from(selected_nodes)
-
-    # Aggiunge archi tra i nodi se esiste un percorso lungo lo scheletro
-    for i in range(len(selected_nodes) - 1):
-        for j in range(i + 1, len(selected_nodes)):
-            # Verifica se esiste un percorso lungo lo scheletro tra i due nodi
-            if check_line_passes_through_skeleton(selected_nodes[i], selected_nodes[j], voronoi_skeleton):
-                topo_map.add_edge(selected_nodes[i], selected_nodes[j])
-
-    # Stampa il numero totale di nodi e archi creati
-    print(f"Numero totale di nodi creati: {len(topo_map.nodes())}")
-    print(f"Numero totale di archi creati: {len(topo_map.edges())}")
-    return topo_map  # Restituisce il grafo topologico
 
 # --- Funzione di conversione dei nodi in waypoints ---
 
@@ -309,25 +321,40 @@ def save_as_pgm(image, filename):
 
 def save_topological_map_with_nodes(skeleton, topo_map, pgm_filename):
     """
-    Sovrappone i nodi del grafo alla mappa scheletrizzata e salva l'immagine risultante.
+    Sovrappone i nodi del grafo alla mappa scheletrizzata, disegnando le coordinate di ciascun nodo sull'immagine,
+    e salva l'immagine risultante in formato PGM.
 
     Parameters:
         skeleton (numpy.ndarray): L'immagine dello scheletro.
         topo_map (networkx.Graph): Il grafo topologico con i nodi.
-        pgm_filename (str): Il percorso del file dove salvare l'immagine.
+        pgm_filename (str): Il percorso del file PGM dove salvare l'immagine con i nodi e le loro coordinate.
     """
     # Converti la mappa scheletrizzata in un'immagine in scala di grigi
     skeleton_with_nodes = (skeleton * 255).astype(np.uint8)
 
+    # Colore e font per i cerchi e il testo
+    node_color = 255  # Bianco
+    text_color = (255)  # Bianco
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    font_scale = 0.4  # Scala del font per mantenere il testo leggibile
+    thickness = 1  # Spessore del font
+
     # Converte le coordinate dei nodi per OpenCV (colonna, riga)
-    node_positions = [(y, x) for x, y in topo_map.nodes()]
-    for position in node_positions:
-        # Disegna un cerchio per ogni nodo sulla mappa scheletrizzata
-        cv2.circle(skeleton_with_nodes, position, 3, 255, -1)
+    for node in topo_map.nodes():
+        y, x = node  # Ottieni le coordinate del nodo (riga, colonna)
 
-    # Salva l'immagine con i nodi disegnati
+        # Disegna un cerchio per rappresentare il nodo
+        cv2.circle(skeleton_with_nodes, (x, y), 3, node_color, -1)
+
+        # Prepara il testo delle coordinate
+        coordinate_text = f"({x}, {y})"
+
+        # Aggiungi il testo con le coordinate sopra il nodo
+        cv2.putText(skeleton_with_nodes, coordinate_text, (x + 5, y - 5), font, font_scale, text_color, thickness)
+
+    # Salva l'immagine con i nodi e le coordinate disegnate
     Image.fromarray(skeleton_with_nodes).save(pgm_filename)
-
+    print(f"Mappa con coordinate dei nodi salvata in {pgm_filename}")
 # --- Funzione per salvare il file YAML associato ---
 
 def save_as_yaml(yaml_filename, pgm_filename):
@@ -383,15 +410,19 @@ def process_map(image_path, max_nodes=None):
     map_name = os.path.splitext(os.path.basename(image_path))[0]
 
     # Crea una cartella per questa mappa
-    map_directory = create_map_directory(map_name+"_topological")
+    map_directory = create_map_directory(map_name + "_topological")
 
-    # Passo 1: Carica la mappa di occupazione
+    # Passo 1: Carica e pulisce la mappa di occupazione
     occupancy_grid = load_map(image_path)
+    cleaned_map = clean_map(occupancy_grid)  # Applica la pulizia della mappa
+    save_as_pgm(cleaned_map, os.path.join(map_directory, f"{map_name}_cleaned_map.pgm"))
 
     # Passo 2: Crea la mappa binaria
-    binary_map = create_binary_map(occupancy_grid)
-    # Salva la mappa binaria
+    binary_map = create_binary_map(cleaned_map)  # Usa la mappa pulita come input
     save_as_pgm(binary_map, os.path.join(map_directory, f"{map_name}_binary_map.pgm"))
+
+    # Continua con i passaggi successivi...
+
 
     # Passo 3: Calcola la mappa delle distanze euclidee
     distance_map = compute_distance_map(binary_map)
@@ -427,13 +458,37 @@ def process_map(image_path, max_nodes=None):
     save_as_yaml(os.path.join(map_directory, f"{map_name}_topologica_scheletro_nodi.yaml"),
                  f"{map_name}_topologica_scheletro_nodi.pgm")
 
-# --- Esecuzione del codice ---
 
+
+#### UBUNTU VERSION
+# if __name__ == "__main__":
+#     # Percorso di default per la mappa
+#     default_image_path = "C:\Users\Beniamino\Desktop\Tesi\Codice\diem_turtlebot_ws\src\map\diem_map.pgm"
+
+#     # Crea il parser degli argomenti
+#     parser = argparse.ArgumentParser(description="Generazione di una mappa topologica da una mappa di occupazione.")
+#     parser.add_argument('image_path', type=str, nargs='?', default=default_image_path,
+#                         help="Percorso dell'immagine della mappa da processare (predefinito: diem_turtlebot_ws/src/map/diem_map.pgm)")
+#     parser.add_argument('--max_nodes', type=int, default=None, help="Numero massimo di nodi nel grafo topologico. Se non specificato, non c'è limite.")
+
+#     # Parsea gli argomenti
+#     args = parser.parse_args()
+
+#     # Esegue il processo sulla mappa specificata
+#     process_map(args.image_path, max_nodes=args.max_nodes)
+
+
+
+#### WINDOWS  VERSION
 if __name__ == "__main__":
+    # Percorso di default per la mappa, con doppie backslash per Windows
+    default_image_path = "diem_map.pgm"
+
     # Crea il parser degli argomenti
     parser = argparse.ArgumentParser(description="Generazione di una mappa topologica da una mappa di occupazione.")
-    parser.add_argument('image_path', type=str, help='Percorso dell\'immagine della mappa da processare.')
-    parser.add_argument('--max_nodes', type=int, default=None, help='Numero massimo di nodi nel grafo topologico. Se non specificato, non c\'è limite.')
+    parser.add_argument('image_path', type=str, nargs='?', default=default_image_path,
+                        help="Percorso dell'immagine della mappa da processare (predefinito: diem_turtlebot_ws/src/map/diem_map.pgm)")
+    parser.add_argument('--max_nodes', type=int, default=None, help="Numero massimo di nodi nel grafo topologico. Se non specificato, non c'è limite.")
 
     # Parsea gli argomenti
     args = parser.parse_args()
