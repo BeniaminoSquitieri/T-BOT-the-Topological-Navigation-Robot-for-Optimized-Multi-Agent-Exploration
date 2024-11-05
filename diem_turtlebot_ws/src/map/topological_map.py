@@ -8,6 +8,35 @@ from skimage.morphology import skeletonize  # Funzione per scheletrizzare immagi
 from PIL import Image  # Libreria per la manipolazione delle immagini
 import yaml  # Libreria per leggere e scrivere file YAML
 import argparse  # Modulo per gestire gli argomenti da riga di comando
+from sklearn.cluster import DBSCAN
+from scipy.spatial import cKDTree
+from skimage.draw import line as draw_line
+import logging
+import json
+
+class CoordinateTransformer:
+    def __init__(self, image_height, resolution, origin):
+        self.image_height = image_height
+        self.resolution = resolution
+        self.origin = origin  # (x_origin, y_origin)
+    
+    def pixel_to_map(self, node):
+        y_pixel, x_pixel = node
+        x_map = self.origin[0] + x_pixel * self.resolution
+        y_map = self.origin[1] + (self.image_height - y_pixel) * self.resolution
+        return x_map, y_map
+
+    def map_to_pixel(self, x_map, y_map):
+        x_pixel = int((x_map - self.origin[0]) / self.resolution)
+        y_pixel = self.image_height - int((y_map - self.origin[1]) / self.resolution)
+        return y_pixel, x_pixel
+
+class Config:
+    def __init__(self):
+        self.resolution = 0.05  # metri per pixel
+        self.origin = (-32.507755, -27.073547)  # (x_origin, y_origin)
+        self.merge_threshold = 50  # in pixel
+        self.max_connection_distance = 100000  # in pixel
 
 
 # --- Funzioni di base ---
@@ -157,125 +186,73 @@ def create_topological_graph_using_skeleton(voronoi_skeleton, max_nodes=None, me
     Crea un grafo topologico basato sullo scheletro di Voronoi,
     con nodi distribuiti uniformemente sia lungo l'asse X che Y.
     I nodi vicini entro una certa soglia vengono fusi.
-
-    Parameters:
-        voronoi_skeleton (numpy.ndarray): L'immagine dello scheletro di Voronoi.
-        max_nodes (int, optional): Numero massimo di nodi da inserire nel grafo.
-                                   Se None, non c'è limite al numero di nodi.
-        merge_threshold (int): Distanza massima entro la quale i nodi vengono fusi (in pixel).
-        max_connection_distance (int): Distanza massima entro la quale connettere i nodi con un arco (in pixel).
-        resolution (float): La risoluzione della mappa (metri per pixel).
-        origin (tuple): L'origine della mappa (x, y).
-        image_height (int): Altezza dell'immagine in pixel per l'inversione dell'asse y.
-
-    Returns:
-        networkx.Graph: Il grafo topologico creato.
     """
-    topo_map = ntx.Graph()  # Crea un nuovo grafo vuoto
-
-    # Funzione per calcolare la distanza euclidea tra due punti
-    def distance(p1, p2):
-        return np.sqrt((p1[0] - p2[0]) ** 2 + (p1[1] - p2[1]) ** 2)
-
+    topo_map = ntx.Graph()
+    
     # Definisce un kernel per contare i vicini (esclude il pixel centrale)
     kernel = np.array([[1, 1, 1],
                        [1, 0, 1],
                        [1, 1, 1]], dtype=int)
-
+    
     # Conta il numero di vicini per ogni pixel dello scheletro
     neighbor_count = convolve(voronoi_skeleton.astype(int), kernel, mode='constant', cval=0)
-
-    # Identifica i nodi agli incroci o estremità (dove il numero di vicini è diverso da 2)
-    node_positions = np.where((voronoi_skeleton == 1) & (neighbor_count != 2))
-    node_list = list(zip(node_positions[0], node_positions[1]))
-
-    # Funzione per fondere i nodi vicini in base alla soglia di distanza
-    fused_nodes = []
-    while node_list:
-        node = node_list.pop(0)
-        close_nodes = [node]  # Inizializza con il nodo corrente
-        # Trova tutti i nodi vicini che rientrano nella soglia di distanza
-        node_list = [n for n in node_list if distance(node, n) > merge_threshold or close_nodes.append(n)]
-        # Calcola il centroide dei nodi vicini e aggiunge il nodo fuso
-        avg_x = int(np.mean([n[0] for n in close_nodes]))
-        avg_y = int(np.mean([n[1] for n in close_nodes]))
-        fused_nodes.append((avg_x, avg_y))
-
-    print("Fusione dei nodi completata. Numero di nodi dopo la fusione:", len(fused_nodes))
     
-    # Stampa tutti i nodi fusi disponibili prima della creazione degli archi
-    print("Nodi disponibili per la creazione degli archi (coordinate in pixel):")
-    for node in fused_nodes:
-        # Usa la funzione convert_to_map_coordinates per ottenere le coordinate mappa
-        x_map, y_map = convert_to_map_coordinates(node, image_height, resolution, origin)
-        print(f"Nodo: Coordinate pixel ({node[1]}, {node[0]}) -> Coordinate mappa ({x_map:.2f}, {y_map:.2f})")
+    # Identifica i nodi agli incroci o estremità (dove il numero di vicini è diverso da 2)
+    node_positions = np.column_stack(np.where((voronoi_skeleton == 1) & (neighbor_count != 2)))
+    
+    # Applica DBSCAN per fondere i nodi vicini
+    clustering = DBSCAN(eps=merge_threshold, min_samples=1).fit(node_positions)
+    
+    # Calcola il centroide di ciascun cluster per ottenere i nodi fusi
+    fused_nodes = []
+    for cluster_id in np.unique(clustering.labels_):
+        cluster_points = node_positions[clustering.labels_ == cluster_id]
+        centroid = np.mean(cluster_points, axis=0).astype(int)
+        fused_nodes.append(tuple(centroid))
+    
+    logging.info("Fusione dei nodi completata. Numero di nodi dopo la fusione: %d", len(fused_nodes))
 
+    
     # Aggiunge i nodi fusi al grafo
     topo_map.add_nodes_from(fused_nodes)
-
+    
+    # Costruisce un KD-Tree per cercare nodi vicini efficientemente
+    node_tree = cKDTree(fused_nodes)
+    
+    # Trova coppie di nodi entro la distanza massima
+    pairs = node_tree.query_pairs(r=max_connection_distance)
+    
     # Procedura per la creazione degli archi
-    for i in range(len(fused_nodes) - 1):
-        for j in range(i + 1, len(fused_nodes)):
-            dist = distance(fused_nodes[i], fused_nodes[j])
-            if dist <= max_connection_distance:
-                # print(f"Verifica arco tra nodi {fused_nodes[i]} e {fused_nodes[j]}, distanza: {dist:.2f}")
-                
-                # Controlla se esiste un altro nodo più vicino a i rispetto a j
-                intermediate_found = False
-                for k in range(len(fused_nodes)):
-                    if k != i and k != j:
-                        if distance(fused_nodes[i], fused_nodes[k]) < dist:
-                            intermediate_found = True
-                            break
-                
-                # Solo se non c'è un nodo intermedio, verifica il percorso e aggiunge l'arco
-                if not intermediate_found:
-                    if check_line_passes_through_skeleton(fused_nodes[i], fused_nodes[j], voronoi_skeleton):
-                        topo_map.add_edge(fused_nodes[i], fused_nodes[j])
-                        node_i_map = convert_to_map_coordinates(fused_nodes[i])
-                        node_j_map = convert_to_map_coordinates(fused_nodes[j])
-                        print(f"Arco creato tra {node_i_map} e {node_j_map}")
-                    # else:
-                    #     print(f"Nessun arco: il percorso tra {fused_nodes[i]} e {fused_nodes[j]} non passa completamente attraverso lo scheletro.")
-            else:
-                print(f"Nessun arco: {fused_nodes[i]} e {fused_nodes[j]} troppo distanti ({dist:.2f}).")
-
+    for i, j in pairs:
+        node_i = fused_nodes[i]
+        node_j = fused_nodes[j]
+        if check_line_passes_through_skeleton(node_i, node_j, voronoi_skeleton):
+            topo_map.add_edge(node_i, node_j)
+            # Debug opzionale
+            # print(f"Arco creato tra {node_i} e {node_j}")
     
     return topo_map
+
 
 # Funzione di controllo del percorso attraverso lo scheletro
 def check_line_passes_through_skeleton(node1, node2, skeleton):
     """
     Verifica se una linea tra due nodi passa interamente attraverso lo scheletro.
-
-    Parameters:
-        node1 (tuple): Coordinate (x, y) del primo nodo.
-        node2 (tuple): Coordinate (x, y) del secondo nodo.
-        skeleton (numpy.ndarray): L'immagine dello scheletro.
-
-    Returns:
-        bool: True se la linea passa interamente attraverso lo scheletro, False altrimenti.
     """
-    x0, y0 = node1  # Coordinate del primo nodo
-    x1, y1 = node2  # Coordinate del secondo nodo
+    y0, x0 = node1  # Coordinate del primo nodo
+    y1, x1 = node2  # Coordinate del secondo nodo
 
-    # Calcola il numero di punti lungo la linea
-    num_points = max(abs(x1 - x0), abs(y1 - y0))
-    if num_points == 0:
-        num_points = 1  # Evita divisione per zero se i nodi coincidono
-
-    # Genera valori di x e y lungo la linea tra i due nodi
-    x_vals = np.linspace(x0, x1, num_points, dtype=int)
-    y_vals = np.linspace(y0, y1, num_points, dtype=int)
+    # Usa l'algoritmo di Bresenham per ottenere i pixel lungo la linea
+    rr, cc = draw_line(y0, x0, y1, x1)
 
     # Verifica che gli indici siano all'interno dei limiti dell'immagine
-    valid_indices = (x_vals >= 0) & (x_vals < skeleton.shape[0]) & \
-                    (y_vals >= 0) & (y_vals < skeleton.shape[1])
-    x_vals = x_vals[valid_indices]
-    y_vals = y_vals[valid_indices]
+    valid_indices = (rr >= 0) & (rr < skeleton.shape[0]) & \
+                    (cc >= 0) & (cc < skeleton.shape[1])
+    rr = rr[valid_indices]
+    cc = cc[valid_indices]
 
     # Verifica se tutti i punti lungo la linea appartengono allo scheletro
-    return np.all(skeleton[x_vals, y_vals] == 1)
+    return np.all(skeleton[rr, cc] == 1)
 
 
 # --- Funzione per convertire i valori in formati Python standard ---
@@ -324,52 +301,73 @@ def save_as_pgm(image, filename):
     # Converte l'immagine in uint8 e scala i valori da 0 a 255 se necessario
     Image.fromarray((image * 255).astype(np.uint8)).save(filename)
 
-# --- Funzione per salvare la mappa topologica con nodi in formato PGM ---
 
-def save_topological_map_with_nodes(skeleton, topo_map, pgm_filename, resolution, origin, image_height):
+def save_graph_as_json(topo_map, filename, transformer):
+    """
+    Salva il grafo topologico con i nodi e archi in formato JSON.
+
+    Parameters:
+        topo_map (networkx.Graph): Il grafo topologico con i nodi e archi.
+        filename (str): Il percorso del file JSON in cui salvare il grafo.
+        transformer (CoordinateTransformer): Oggetto per trasformare le coordinate pixel in coordinate mappa.
+    """
+    # Convert nodes with map coordinates
+    nodes = []
+    for i, node in enumerate(topo_map.nodes()):
+        x_map, y_map = transformer.pixel_to_map(node)
+        nodes.append({"label": f"node_{i+1}", "x": x_map, "y": y_map})
+
+    # Convert edges
+    edges = [{"source": f"node_{i+1}", "target": f"node_{j+1}"} for i, j in topo_map.edges()]
+
+    # Structure the data in JSON format
+    graph_data = {
+        "nodes": nodes,
+        "edges": edges
+    }
+
+    # Save to JSON file
+    with open(filename, 'w') as json_file:
+        json.dump(graph_data, json_file, indent=4)
+    
+    logging.info(f"Grafo topologico salvato in formato JSON in {filename}")
+
+
+# --- Funzione per salvare la mappa topologica con nodi in formato PGM ---0
+def save_topological_map_with_nodes(skeleton, topo_map, pgm_filename, transformer):
     """
     Sovrappone i nodi del grafo alla mappa scheletrizzata, disegnando le coordinate di ciascun nodo sull'immagine,
     e salva l'immagine risultante in formato PGM.
-
-    Parameters:
-        skeleton (numpy.ndarray): L'immagine dello scheletro.
-        topo_map (networkx.Graph): Il grafo topologico con i nodi.
-        pgm_filename (str): Il percorso del file PGM dove salvare l'immagine con i nodi e le loro coordinate.
-        resolution (float): La risoluzione della mappa (metri per pixel).
-        origin (tuple): L'origine della mappa nel sistema di riferimento (x, y).
     """
-    # Copia dello scheletro per disegnare i nodi
-    skeleton_with_nodes = (skeleton * 255).astype(np.uint8)
+    # Inverti l'immagine dello scheletro per migliorare la visibilità
+    skeleton_with_nodes = 255 - (skeleton * 255).astype(np.uint8)
 
     # Colore e font per i cerchi e il testo
-    node_color = 255  # Colore bianco per i nodi
-    text_color = (255)  # Colore bianco per il testo
+    node_color = 0  # Colore nero per i nodi
+    text_color = (0)  # Colore nero per il testo
     font = cv2.FONT_HERSHEY_SIMPLEX
-    font_scale = 0.4
-    thickness = 1
+    font_scale = 0.6
+    thickness = 2
 
     # Disegna i nodi usando le coordinate in pixel
     for node in topo_map.nodes():
-        # Coordinate del nodo in pixel (come tuple di (y, x))
         y_pixel, x_pixel = node
-
-        # Disegna il nodo come cerchio
-        cv2.circle(skeleton_with_nodes, (x_pixel, y_pixel), 3, node_color, -1)
-
-        # Converte le coordinate del nodo in coordinate mappa per il testo
-        x_map = origin[0] + x_pixel * resolution
-        y_map = origin[1] + (image_height - y_pixel) * resolution
+        x_map, y_map = transformer.pixel_to_map(node)
         coordinate_text = f"({x_map:.2f}, {y_map:.2f})"
+
+        # Disegna il nodo come cerchio più grande
+        cv2.circle(skeleton_with_nodes, (x_pixel, y_pixel), 6, node_color, -1)
 
         # Aggiungi il testo con le coordinate in metri sopra il nodo
         cv2.putText(skeleton_with_nodes, coordinate_text, (x_pixel + 5, y_pixel - 5), font, font_scale, text_color, thickness)
 
         # Stampa per debug (coordinate in pixel e coordinate mappa)
-        print(f"Nodo salvato: Coordinate pixel ({x_pixel}, {y_pixel}) -> Coordinate mappa {coordinate_text}")
+        # logging.info(f"Nodo salvato: Coordinate pixel ({x_pixel}, {y_pixel}) -> Coordinate mappa {coordinate_text}")
 
     # Salva l'immagine con i nodi e le coordinate disegnate
     Image.fromarray(skeleton_with_nodes).save(pgm_filename)
-    print(f"Mappa con coordinate dei nodi salvata in {pgm_filename}")
+    logging.info(f"Mappa con coordinate dei nodi salvata in {pgm_filename}")
+
 
 
 # --- Funzione per salvare il file YAML associato ---
@@ -412,35 +410,34 @@ def create_map_directory(map_name):
         os.makedirs(map_name)
     return map_name  # Restituisce il nome della directory
 
-def save_pixel_to_map_transformations(topo_map, filename, resolution, origin, image_height):
+def save_pixel_to_map_transformations(topo_map, filename, transformer):
     """
     Salva la trasformazione tra coordinate pixel e coordinate mappa in un file di testo.
 
     Parameters:
         topo_map (networkx.Graph): Il grafo topologico con i nodi.
         filename (str): Il percorso del file di testo in cui salvare le trasformazioni.
-        resolution (float): La risoluzione della mappa (metri per pixel).
-        origin (tuple): L'origine della mappa nel sistema di riferimento (x, y).
+        transformer (CoordinateTransformer): L'oggetto per trasformare le coordinate.
     """
     with open(filename, 'w') as file:
         file.write("Transformazione tra coordinate pixel e coordinate mappa:\n")
         file.write("Formato: (Pixel X, Pixel Y) -> (Mappa X, Mappa Y)\n\n")
-         
+
         for node in topo_map.nodes():
             # Coordinate in pixel del nodo
-            y_pixel, x_pixel = node  # Assicurati di usare (y, x) come nell'immagine
+            y_pixel, x_pixel = node
 
             # Conversione alle coordinate mappa
-            x_map = origin[0] + x_pixel * resolution
-            y_map = origin[1] + (image_height - y_pixel) * resolution 
-            
+            x_map, y_map = transformer.pixel_to_map(node)
+
             # Scrivi la trasformazione nel file
             file.write(f"Pixel ({x_pixel}, {y_pixel}) -> Mappa ({x_map:.2f}, {y_map:.2f})\n")
-        
-        print(f"Transformazione salvata in {filename}")
+
+    logging.info(f"Transformazione salvata in {filename}")
+
         
 # --- Funzione di conversione dei nodi in waypoints ---
-def convert_nodes_to_waypoints(topo_map, resolution, origin, image_height):
+def convert_nodes_to_waypoints(topo_map, transformer):
     """
     Converte i nodi del grafo in waypoints nel sistema di riferimento della mappa.
 
@@ -454,14 +451,7 @@ def convert_nodes_to_waypoints(topo_map, resolution, origin, image_height):
     """
     waypoints = []
     for node in topo_map.nodes():
-        # Usa y_pixel per l'asse verticale e x_pixel per l'asse orizzontale
-        y_pixel, x_pixel = node  # nota che l'ordine è (y, x) come pixel
-
-        # Conversione di coordinate da pixel a coordinate mappa
-        x_map = origin[0] + x_pixel * resolution
-        y_map = origin[1] + (image_height - y_pixel) * resolution  
-
-        # Aggiungi il waypoint (x_map, y_map) alla lista
+        x_map, y_map = transformer.pixel_to_map(node)
         waypoints.append((x_map, y_map))
     return waypoints
 
@@ -476,6 +466,7 @@ def process_map(image_path, max_nodes=None):
         max_nodes (int, optional): Numero massimo di nodi da inserire nel grafo topologico.
                                    Se None, non c'è limite al numero di nodi.
     """
+    config = Config()
     # Estrae il nome della mappa dall'immagine
     map_name = os.path.splitext(os.path.basename(image_path))[0]
 
@@ -485,6 +476,10 @@ def process_map(image_path, max_nodes=None):
     # Passo 1: Carica e pulisce la mappa di occupazione
     occupancy_grid = load_map(image_path)
     image_height = occupancy_grid.shape[0]  # Calcola l'altezza dell'immagine in pixel
+
+    # Crea un oggetto CoordinateTransformer
+    transformer = CoordinateTransformer(image_height, config.resolution, config.origin)
+
     cleaned_map = clean_map(occupancy_grid)  # Applica la pulizia della mappa
     save_as_pgm(cleaned_map, os.path.join(map_directory, f"{map_name}_cleaned_map.pgm"))
 
@@ -510,40 +505,40 @@ def process_map(image_path, max_nodes=None):
     save_as_pgm(voronoi_skeleton, os.path.join(map_directory, f"{map_name}_skeleton_voronoi.pgm"))
 
     # Passo 6: Creazione del grafo topologico utilizzando lo scheletro
-    topo_map = create_topological_graph_using_skeleton(voronoi_skeleton, max_nodes=max_nodes, image_height=image_height)
+    topo_map = create_topological_graph_using_skeleton(
+        voronoi_skeleton,
+        max_nodes=max_nodes,
+        merge_threshold=config.merge_threshold,
+        max_connection_distance=config.max_connection_distance,
+        resolution=config.resolution,
+        origin=config.origin,
+        image_height=image_height
+    )
 
-    # Passo 7: Converte i nodi del grafo in waypoints
-    waypoints = convert_nodes_to_waypoints(topo_map, resolution=0.05, origin=(-32.507755, -27.073547), image_height=image_height)
-
-    # Stampa i waypoints prima di essere aggiunti alla mappa dello scheletro
-    print("Waypoints prima di essere aggiunti alla mappa dello scheletro:")
-    for i, waypoint in enumerate(waypoints):
-        print(f"Waypoint {i + 1}: (x: {waypoint[0]:.2f}, y: {waypoint[1]:.2f})")
-
-    # Salva i waypoints in YAML
-    save_waypoints_as_yaml(waypoints, os.path.join(map_directory, f"{map_name}_waypoints.yaml"))
+    # Passo 7: Salva il grafo topologico come JSON
+    save_graph_as_json(topo_map, os.path.join(map_directory, f"{map_name}_topological_graph.json"), transformer)
 
     # Salva la trasformazione pixel-mappa in un file txt
     save_pixel_to_map_transformations(
         topo_map,
         os.path.join(map_directory, f"{map_name}_pixel_to_map_transformations.txt"),
-        resolution=0.05,
-        origin=(-32.507755, -27.073547),
-        image_height=image_height
+        transformer
     )
-    
+
     # Passo 8: Salva la mappa scheletrizzata con i nodi
     save_topological_map_with_nodes(
         voronoi_skeleton,
         topo_map,
         os.path.join(map_directory, f"{map_name}_topologica_scheletro_nodi.pgm"),
-        resolution=0.05,
-        origin=(-32.507755, -27.073547),
-        image_height=image_height
+        transformer
     )
+
+
 
 ### UBUNTU VERSION
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
     # Percorso di default per la mappa
     default_image_path = "/home/beniamino/turtlebot4/diem_turtlebot_ws/src/map/diem_map.pgm"
 
@@ -562,7 +557,9 @@ if __name__ == "__main__":
 
 
 # #### WINDOWS  VERSION
+
 # if __name__ == "__main__":
+#     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 #     # Percorso di default per la mappa, con doppie backslash per Windows
 #     default_image_path = "diem_map.pgm"
 
