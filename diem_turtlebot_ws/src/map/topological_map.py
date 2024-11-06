@@ -15,29 +15,51 @@ import logging
 import json
 
 class CoordinateTransformer:
+    """
+    Classe per trasformare le coordinate tra il sistema di riferimento della mappa e i pixel dell'immagine.
+
+    Parameters:
+        image_height (int): Altezza dell'immagine in pixel.
+        resolution (float): Risoluzione della mappa (metri per pixel).
+        origin (tuple): Origine della mappa nel sistema di riferimento (x, y).
+    """
     def __init__(self, image_height, resolution, origin):
         self.image_height = image_height
         self.resolution = resolution
         self.origin = origin  # (x_origin, y_origin)
     
     def pixel_to_map(self, node):
+        """
+        Converte le coordinate di un nodo da pixel a coordinate mappa con inversione dell'asse y.
+        """
         y_pixel, x_pixel = node
         x_map = self.origin[0] + x_pixel * self.resolution
         y_map = self.origin[1] + (self.image_height - y_pixel) * self.resolution
         return x_map, y_map
 
     def map_to_pixel(self, x_map, y_map):
+        """
+        Converte le coordinate mappa di un punto in coordinate pixel con inversione dell'asse y.
+        """
         x_pixel = int((x_map - self.origin[0]) / self.resolution)
         y_pixel = self.image_height - int((y_map - self.origin[1]) / self.resolution)
         return y_pixel, x_pixel
 
 class Config:
+    """
+    Classe di configurazione per i parametri della mappa e del grafo.
+
+    Attributi:
+        resolution (float): Risoluzione della mappa in metri per pixel.
+        origin (tuple): Coordinate di origine della mappa (x, y).
+        merge_threshold (int): Distanza in pixel per fondere i nodi vicini.
+        max_connection_distance (int): Distanza massima in pixel per collegare i nodi nel grafo.
+    """
     def __init__(self):
         self.resolution = 0.05  # metri per pixel
         self.origin = (-32.507755, -27.073547)  # (x_origin, y_origin)
         self.merge_threshold = 50  # in pixel
         self.max_connection_distance = 100000  # in pixel
-
 
 # --- Funzioni di base ---
 
@@ -311,27 +333,26 @@ def save_graph_as_json(topo_map, filename, transformer):
         filename (str): Il percorso del file JSON in cui salvare il grafo.
         transformer (CoordinateTransformer): Oggetto per trasformare le coordinate pixel in coordinate mappa.
     """
-    # Convert nodes with map coordinates
+    # Converte i nodi in coordinate mappa e li aggiunge a una lista di nodi
     nodes = []
     for i, node in enumerate(topo_map.nodes()):
         x_map, y_map = transformer.pixel_to_map(node)
         nodes.append({"label": f"node_{i+1}", "x": x_map, "y": y_map})
 
-    # Convert edges
+    # Converte gli archi in un formato compatibile con JSON
     edges = [{"source": f"node_{i+1}", "target": f"node_{j+1}"} for i, j in topo_map.edges()]
 
-    # Structure the data in JSON format
+    # Struttura i dati del grafo in formato JSON
     graph_data = {
         "nodes": nodes,
         "edges": edges
     }
 
-    # Save to JSON file
+    # Salva i dati in un file JSON
     with open(filename, 'w') as json_file:
         json.dump(graph_data, json_file, indent=4)
     
     logging.info(f"Grafo topologico salvato in formato JSON in {filename}")
-
 
 # --- Funzione per salvare la mappa topologica con nodi in formato PGM ---0
 def save_topological_map_with_nodes(skeleton, topo_map, pgm_filename, transformer):
@@ -367,8 +388,6 @@ def save_topological_map_with_nodes(skeleton, topo_map, pgm_filename, transforme
     # Salva l'immagine con i nodi e le coordinate disegnate
     Image.fromarray(skeleton_with_nodes).save(pgm_filename)
     logging.info(f"Mappa con coordinate dei nodi salvata in {pgm_filename}")
-
-
 
 # --- Funzione per salvare il file YAML associato ---
 
@@ -435,7 +454,6 @@ def save_pixel_to_map_transformations(topo_map, filename, transformer):
 
     logging.info(f"Transformazione salvata in {filename}")
 
-        
 # --- Funzione di conversione dei nodi in waypoints ---
 def convert_nodes_to_waypoints(topo_map, transformer):
     """
@@ -454,7 +472,6 @@ def convert_nodes_to_waypoints(topo_map, transformer):
         x_map, y_map = transformer.pixel_to_map(node)
         waypoints.append((x_map, y_map))
     return waypoints
-
 
 # --- Funzione principale ---
 def process_map(image_path, max_nodes=None):
@@ -535,33 +552,12 @@ def process_map(image_path, max_nodes=None):
 
 
 
-### UBUNTU VERSION
-if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-
-    # Percorso di default per la mappa
-    default_image_path = "/home/beniamino/turtlebot4/diem_turtlebot_ws/src/map/diem_map.pgm"
-
-    # Crea il parser degli argomenti
-    parser = argparse.ArgumentParser(description="Generazione di una mappa topologica da una mappa di occupazione.")
-    parser.add_argument('image_path', type=str, nargs='?', default=default_image_path,
-                        help="Percorso dell'immagine della mappa da processare (predefinito: diem_turtlebot_ws/src/map/diem_map.pgm)")
-    parser.add_argument('--max_nodes', type=int, default=None, help="Numero massimo di nodi nel grafo topologico. Se non specificato, non c'è limite.")
-
-    # Parsea gli argomenti
-    args = parser.parse_args()
-
-    # Esegue il processo sulla mappa specificata
-    process_map(args.image_path, max_nodes=args.max_nodes)
-
-
-
-# #### WINDOWS  VERSION
-
+# ### UBUNTU VERSION
 # if __name__ == "__main__":
 #     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-#     # Percorso di default per la mappa, con doppie backslash per Windows
-#     default_image_path = "diem_map.pgm"
+
+#     # Percorso di default per la mappa
+#     default_image_path = "/home/beniamino/turtlebot4/diem_turtlebot_ws/src/map/diem_map.pgm"
 
 #     # Crea il parser degli argomenti
 #     parser = argparse.ArgumentParser(description="Generazione di una mappa topologica da una mappa di occupazione.")
@@ -574,3 +570,24 @@ if __name__ == "__main__":
 
 #     # Esegue il processo sulla mappa specificata
 #     process_map(args.image_path, max_nodes=args.max_nodes)
+
+
+
+#### WINDOWS  VERSION
+
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+    # Percorso di default per la mappa, con doppie backslash per Windows
+    default_image_path = "diem_map.pgm"
+
+    # Crea il parser degli argomenti
+    parser = argparse.ArgumentParser(description="Generazione di una mappa topologica da una mappa di occupazione.")
+    parser.add_argument('image_path', type=str, nargs='?', default=default_image_path,
+                        help="Percorso dell'immagine della mappa da processare (predefinito: diem_turtlebot_ws/src/map/diem_map.pgm)")
+    parser.add_argument('--max_nodes', type=int, default=None, help="Numero massimo di nodi nel grafo topologico. Se non specificato, non c'è limite.")
+
+    # Parsea gli argomenti
+    args = parser.parse_args()
+
+    # Esegue il processo sulla mappa specificata
+    process_map(args.image_path, max_nodes=args.max_nodes)
