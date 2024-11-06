@@ -1,0 +1,106 @@
+{
+    "nodes": [
+        { "label": "node_1", "x": -24.907755, "y": 8.376453000000001 },
+        { "label": "node_2", "x": 16.892245000000003, "y": 5.076452999999997 },
+        { "label": "node_3", "x": 75.79224500000001, "y": 2.5764530000000008 },
+        { "label": "node_4", "x": 59.04224500000001, "y": 2.8764530000000015 },
+        { "label": "node_5", "x": -2.3077550000000002, "y": -0.5235470000000007 },
+        { "label": "node_8", "x": 35.942245, "y": -0.12354699999999852 },
+        { "label": "node_9", "x": -23.607755000000004, "y": -0.22354699999999994 },
+        { "label": "node_10", "x": 17.292245, "y": -1.1235469999999985 },
+        { "label": "node_12", "x": 79.142245, "y": -3.0735470000000014 },
+        { "label": "node_13", "x": 58.29224500000001, "y": -2.7735470000000007 },
+        { "label": "node_14", "x": -23.757755000000003, "y": -6.923546999999999 },
+        { "label": "node_15", "x": -3.4077550000000016, "y": -8.673547 },
+        { "label": "node_16", "x": 17.192245, "y": -8.623547000000002 },
+        { "label": "node_17", "x": 37.692245, "y": -9.373547000000002 },
+        { "label": "node_18", "x": -24.557755000000004, "y": -9.573547000000001 },
+        { "label": "node_19", "x": 58.142245, "y": -10.823547000000001 },
+        { "label": "node_22", "x": -24.257755000000003, "y": -13.223547 },
+        { "label": "node_23", "x": 58.242245, "y": -15.173547000000001 },
+        { "label": "node_24", "x": 18.192245, "y": -16.173547 },
+        { "label": "node_25", "x": 77.54224500000001, "y": -17.323547 },
+        { "label": "node_26", "x": 58.942245, "y": -18.523547 },
+        { "label": "node_27", "x": 78.992245, "y": -19.573547 }
+    ],
+    "edges": [
+        { "from": "node_1", "to": "node_9", "direction": "WEST" },
+        { "from": "node_9", "to": "node_1", "direction": "EAST" },
+        
+        { "from": "node_9", "to": "node_5", "direction": "NORTH" },
+        { "from": "node_5", "to": "node_9", "direction": "SOUTH" },
+        
+        { "from": "node_9", "to": "node_14", "direction": "WEST" },
+        { "from": "node_14", "to": "node_9", "direction": "EAST" },
+
+        { "from": "node_5", "to": "node_10", "direction": "NORTH" },
+        { "from": "node_10", "to": "node_5", "direction": "SOUTH" },
+
+        { "from": "node_10", "to": "node_2", "direction": "WEST" },
+        { "from": "node_2", "to": "node_10", "direction": "EAST" },
+        
+        { "from": "node_10", "to": "node_16", "direction": "WEST" },
+        { "from": "node_16", "to": "node_10", "direction": "EAST" },
+
+        { "from": "node_10", "to": "node_8", "direction": "NORTH" },
+        { "from": "node_8", "to": "node_10", "direction": "SOUTH" },
+        
+        { "from": "node_13", "to": "node_8", "direction": "SOUTH" },
+        { "from": "node_8", "to": "node_13", "direction": "NORTH" },
+
+        { "from": "node_17", "to": "node_16", "direction": "SOUTH" },
+        { "from": "node_16", "to": "node_17", "direction": "NORTH" },
+        
+        { "from": "node_16", "to": "node_24", "direction": "EAST" },
+        { "from": "node_24", "to": "node_16", "direction": "WEST" },
+        
+        { "from": "node_16", "to": "node_15", "direction": "SOUTH" },
+        { "from": "node_15", "to": "node_16", "direction": "NORTH" },
+        
+        { "from": "node_15", "to": "node_14", "direction": "SOUTH" },
+        { "from": "node_14", "to": "node_15", "direction": "NORTH" },
+        
+        { "from": "node_14", "to": "node_18", "direction": "EAST" },
+        { "from": "node_18", "to": "node_14", "direction": "WEST" },
+        
+        { "from": "node_18", "to": "node_22", "direction": "EAST" },
+        { "from": "node_22", "to": "node_18", "direction": "WEST" },
+
+        { "from": "node_13", "to": "node_4", "direction": "EAST" },
+        { "from": "node_4", "to": "node_13", "direction": "WEST" },
+        
+        { "from": "node_13", "to": "node_19", "direction": "WEST" },
+        { "from": "node_19", "to": "node_13", "direction": "EAST" },  
+                
+        { "from": "node_3", "to": "node_4", "direction": "SOUTH" },
+        { "from": "node_4", "to": "node_3", "direction": "NORTH" },
+                
+        { "from": "node_3", "to": "node_12", "direction": "WEST" },
+        { "from": "node_12", "to": "node_3", "direction": "EAST" },
+                 
+        { "from": "node_25", "to": "node_12", "direction": "EAST" },
+        { "from": "node_12", "to": "node_25", "direction": "WEST" },  
+                    
+        { "from": "node_25", "to": "node_27", "direction": "WEST" },
+        { "from": "node_27", "to": "node_25", "direction": "EAST" },  
+                       
+        { "from": "node_26", "to": "node_27", "direction": "NORTH" },
+        { "from": "node_27", "to": "node_26", "direction": "SOUTH" },  
+                       
+        { "from": "node_26", "to": "node_23", "direction": "EAST" },
+        { "from": "node_23", "to": "node_26", "direction": "WEST" },  
+                               
+        { "from": "node_19", "to": "node_23", "direction": "WEST" },
+        { "from": "node_23", "to": "node_19", "direction": "EAST" },  
+                                       
+        { "from": "node_19", "to": "node_17", "direction": "SOUTH" },
+        { "from": "node_17", "to": "node_19", "direction": "NORTH" },  
+
+        { "from": "node_19", "to": "node_23", "direction": "WEST" },
+        { "from": "node_23", "to": "node_19", "direction": "EAST" }
+
+    ]
+
+
+
+}

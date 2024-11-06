@@ -203,7 +203,7 @@ def convert_to_map_coordinates(node, image_height, resolution, origin):
     return x_map, y_map
 
 # --- Funzione di verifica del percorso attraverso pixel bianchi ---
-def create_topological_graph_using_skeleton(voronoi_skeleton, max_nodes=None, merge_threshold=50, max_connection_distance=100000, resolution=0.05, origin=(-32.507755, -27.073547), image_height=None):
+def create_topological_graph_using_skeleton(voronoi_skeleton,  merge_threshold=50, max_connection_distance=100000, resolution=0.05, origin=(-32.507755, -27.073547), image_height=None):
     """
     Crea un grafo topologico basato sullo scheletro di Voronoi,
     con nodi distribuiti uniformemente sia lungo l'asse X che Y.
@@ -238,20 +238,20 @@ def create_topological_graph_using_skeleton(voronoi_skeleton, max_nodes=None, me
     # Aggiunge i nodi fusi al grafo
     topo_map.add_nodes_from(fused_nodes)
     
-    # Costruisce un KD-Tree per cercare nodi vicini efficientemente
-    node_tree = cKDTree(fused_nodes)
+    # # Costruisce un KD-Tree per cercare nodi vicini efficientemente
+    # node_tree = cKDTree(fused_nodes)
     
-    # Trova coppie di nodi entro la distanza massima
-    pairs = node_tree.query_pairs(r=max_connection_distance)
+    # # Trova coppie di nodi entro la distanza massima
+    # pairs = node_tree.query_pairs(r=max_connection_distance)
     
-    # Procedura per la creazione degli archi
-    for i, j in pairs:
-        node_i = fused_nodes[i]
-        node_j = fused_nodes[j]
-        if check_line_passes_through_skeleton(node_i, node_j, voronoi_skeleton):
-            topo_map.add_edge(node_i, node_j)
-            # Debug opzionale
-            # print(f"Arco creato tra {node_i} e {node_j}")
+    # # Procedura per la creazione degli archi
+    # for i, j in pairs:
+    #     node_i = fused_nodes[i]
+    #     node_j = fused_nodes[j]
+    #     if check_line_passes_through_skeleton(node_i, node_j, voronoi_skeleton):
+    #         topo_map.add_edge(node_i, node_j)
+    #         # Debug opzionale
+    #         # print(f"Arco creato tra {node_i} e {node_j}")
     
     return topo_map
 
@@ -474,14 +474,12 @@ def convert_nodes_to_waypoints(topo_map, transformer):
     return waypoints
 
 # --- Funzione principale ---
-def process_map(image_path, max_nodes=None):
+def process_map(image_path):
     """
     Coordina tutti i passaggi necessari per processare la mappa e generare i file finali.
 
     Parameters:
         image_path (str): Il percorso dell'immagine della mappa da processare.
-        max_nodes (int, optional): Numero massimo di nodi da inserire nel grafo topologico.
-                                   Se None, non c'è limite al numero di nodi.
     """
     config = Config()
     # Estrae il nome della mappa dall'immagine
@@ -524,7 +522,6 @@ def process_map(image_path, max_nodes=None):
     # Passo 6: Creazione del grafo topologico utilizzando lo scheletro
     topo_map = create_topological_graph_using_skeleton(
         voronoi_skeleton,
-        max_nodes=max_nodes,
         merge_threshold=config.merge_threshold,
         max_connection_distance=config.max_connection_distance,
         resolution=config.resolution,
@@ -563,13 +560,12 @@ def process_map(image_path, max_nodes=None):
 #     parser = argparse.ArgumentParser(description="Generazione di una mappa topologica da una mappa di occupazione.")
 #     parser.add_argument('image_path', type=str, nargs='?', default=default_image_path,
 #                         help="Percorso dell'immagine della mappa da processare (predefinito: diem_turtlebot_ws/src/map/diem_map.pgm)")
-#     parser.add_argument('--max_nodes', type=int, default=None, help="Numero massimo di nodi nel grafo topologico. Se non specificato, non c'è limite.")
 
 #     # Parsea gli argomenti
 #     args = parser.parse_args()
 
 #     # Esegue il processo sulla mappa specificata
-#     process_map(args.image_path, max_nodes=args.max_nodes)
+#     process_map(args.image_path)
 
 
 
@@ -578,16 +574,15 @@ def process_map(image_path, max_nodes=None):
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
     # Percorso di default per la mappa, con doppie backslash per Windows
-    default_image_path = "diem_map.pgm"
+    default_image_path = os.path.join("..", "diem_map.pgm")
 
     # Crea il parser degli argomenti
     parser = argparse.ArgumentParser(description="Generazione di una mappa topologica da una mappa di occupazione.")
     parser.add_argument('image_path', type=str, nargs='?', default=default_image_path,
                         help="Percorso dell'immagine della mappa da processare (predefinito: diem_turtlebot_ws/src/map/diem_map.pgm)")
-    parser.add_argument('--max_nodes', type=int, default=None, help="Numero massimo di nodi nel grafo topologico. Se non specificato, non c'è limite.")
 
     # Parsea gli argomenti
     args = parser.parse_args()
 
     # Esegue il processo sulla mappa specificata
-    process_map(args.image_path, max_nodes=args.max_nodes)
+    process_map(args.image_path)
