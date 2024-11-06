@@ -6,7 +6,7 @@ Lo script *cpp.py* fornisce un'implementazione in Python per risolvere il **Prob
 
 ## Descrizione del Progetto
 
-Il progetto mira a risolvere il problema del postino cinese su un grafo orientato e pesato, fornendo un percorso ottimale che minimizzi il costo necessario per percorrere tutti gli archi. Per raggiungere questo obiettivo, il codice effettua diversi passaggi fondamentali, descritti di seguito.
+Lo scopo è quello di risolvere il problema del postino cinese su un grafo orientato e pesato, fornendo un percorso ottimale che minimizzi il costo necessario per percorrere tutti gli archi. Per raggiungere questo obiettivo, il codice effettua diversi passaggi fondamentali, descritti di seguito.
 
 ### Panoramica del Flusso di Lavoro
 
