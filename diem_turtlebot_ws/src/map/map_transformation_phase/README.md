@@ -98,10 +98,19 @@ Dopo aver generato la mappa, puoi visualizzarla in RVIZ per verificarne l'accura
 
 2. **Esegui i seguenti comandi in tre diverse shell per lanciare i moduli necessari alla visualizzazione e navigazione della mappa.**
 
+3. **Non dimenticarti di andare nella directory della mappa** 
+- /turtlebot4/diem_turtlebot_ws/src/map/map_transformation_phase/diem_map_topological
 ### Shell 1 - Avvia la Localizzazione Utilizzando la Mappa
 ```bash
 ros2 launch turtlebot4_navigation localization.launch.py map:=<map_yaml_file_path>
 ```
+Nel mio caso: 
+
+```bash
+ros2 launch turtlebot4_navigation localization.launch.py map:=/home/beniamino/turtlebot4/diem_turtlebot_ws/src/map/map_transformation_phase/diem_map_topological/diem_map_topologica_scheletro_nodi.yaml
+
+```
+
 ### Shell 2 - Avvia il Modulo di Navigazione
 ```bash
 ros2 launch turtlebot4_navigation nav2.launch.py
