@@ -11,8 +11,8 @@ import argparse  # Modulo per gestire gli argomenti da riga di comando
 from sklearn.cluster import DBSCAN
 from scipy.spatial import cKDTree
 from skimage.draw import line as draw_line
-import logging
 import json
+import shutil
 
 class CoordinateTransformer:
     """
@@ -232,7 +232,7 @@ def create_topological_graph_using_skeleton(voronoi_skeleton,  merge_threshold=5
         centroid = np.mean(cluster_points, axis=0).astype(int)
         fused_nodes.append(tuple(centroid))
     
-    logging.info("Fusione dei nodi completata. Numero di nodi dopo la fusione: %d", len(fused_nodes))
+    print("Fusione dei nodi completata. Numero di nodi dopo la fusione: %d", len(fused_nodes))
 
     
     # Aggiunge i nodi fusi al grafo
@@ -310,18 +310,19 @@ def save_waypoints_as_yaml(waypoints, filename):
     with open(filename, 'w') as yaml_file:
         yaml.dump(waypoints_data, yaml_file, default_flow_style=False)
 
-# --- Funzione per salvare un'immagine PGM ---
+# --- Funzione per salvare un'immagine png ---
 
-def save_as_pgm(image, filename):
+def save_as_png(image, filename):
     """
-    Salva un'immagine numpy array in formato PGM.
+    Salva un'immagine numpy array in formato PNG.
 
     Parameters:
         image (numpy.ndarray): L'immagine da salvare.
         filename (str): Il percorso del file dove salvare l'immagine.
     """
     # Converte l'immagine in uint8 e scala i valori da 0 a 255 se necessario
-    Image.fromarray((image * 255).astype(np.uint8)).save(filename)
+    Image.fromarray((image * 255).astype(np.uint8)).save(filename, format="PNG")
+
 
 
 def save_graph_as_json(topo_map, filename, transformer):
@@ -352,20 +353,26 @@ def save_graph_as_json(topo_map, filename, transformer):
     with open(filename, 'w') as json_file:
         json.dump(graph_data, json_file, indent=4)
     
-    logging.info(f"Grafo topologico salvato in formato JSON in {filename}")
+    print(f"Grafo topologico salvato in formato JSON in {filename}")
 
-# --- Funzione per salvare la mappa topologica con nodi in formato PGM ---0
-def save_topological_map_with_nodes(skeleton, topo_map, pgm_filename, transformer):
+# --- Funzione per salvare la mappa topologica con nodi in formato png ---0
+def save_topological_map_with_nodes(skeleton, topo_map, png_filename, transformer):
     """
     Sovrappone i nodi del grafo alla mappa scheletrizzata, disegnando le coordinate di ciascun nodo sull'immagine,
-    e salva l'immagine risultante in formato PGM.
+    e salva l'immagine risultante in formato PNG.
+    
+    Parameters:
+        skeleton (numpy.ndarray): La mappa scheletrizzata in cui sovrapporre i nodi.
+        topo_map (networkx.Graph): Il grafo topologico con i nodi.
+        png_filename (str): Il percorso del file PNG in cui salvare l'immagine.
+        transformer (CoordinateTransformer): Oggetto per trasformare le coordinate dei nodi.
     """
     # Inverti l'immagine dello scheletro per migliorare la visibilità
     skeleton_with_nodes = 255 - (skeleton * 255).astype(np.uint8)
 
     # Colore e font per i cerchi e il testo
     node_color = 0  # Colore nero per i nodi
-    text_color = (0)  # Colore nero per il testo
+    text_color = 0  # Colore nero per il testo
     font = cv2.FONT_HERSHEY_SIMPLEX
     font_scale = 0.6
     thickness = 2
@@ -376,32 +383,30 @@ def save_topological_map_with_nodes(skeleton, topo_map, pgm_filename, transforme
         x_map, y_map = transformer.pixel_to_map(node)
         coordinate_text = f"({x_map:.2f}, {y_map:.2f})"
 
-        # Disegna il nodo come cerchio più grande
+        # Disegna il nodo come cerchio
         cv2.circle(skeleton_with_nodes, (x_pixel, y_pixel), 6, node_color, -1)
 
-        # Aggiungi il testo con le coordinate in metri sopra il nodo
+        # Aggiungi il testo con le coordinate in metri accanto al nodo
         cv2.putText(skeleton_with_nodes, coordinate_text, (x_pixel + 5, y_pixel - 5), font, font_scale, text_color, thickness)
 
-        # Stampa per debug (coordinate in pixel e coordinate mappa)
-        # logging.info(f"Nodo salvato: Coordinate pixel ({x_pixel}, {y_pixel}) -> Coordinate mappa {coordinate_text}")
+    # Salva l'immagine con i nodi e le coordinate disegnate in formato PNG
+    Image.fromarray(skeleton_with_nodes).save(png_filename, format="PNG")
+    print(f"Mappa con coordinate dei nodi salvata in {png_filename}")
 
-    # Salva l'immagine con i nodi e le coordinate disegnate
-    Image.fromarray(skeleton_with_nodes).save(pgm_filename)
-    logging.info(f"Mappa con coordinate dei nodi salvata in {pgm_filename}")
 
 # --- Funzione per salvare il file YAML associato ---
 
-def save_as_yaml(yaml_filename, pgm_filename):
+def save_as_yaml(yaml_filename, png_filename):
     """
     Crea un file YAML che contiene le informazioni necessarie per utilizzare la mappa in ROS2.
 
     Parameters:
         yaml_filename (str): Il percorso del file YAML da creare.
-        pgm_filename (str): Il nome del file PGM della mappa.
+        png_filename (str): Il nome del file png della mappa.
     """
     # Crea un dizionario con i dati necessari per il file YAML
     yaml_data = {
-        "image": f"./{pgm_filename}",  # Percorso relativo all'immagine della mappa
+        "image": f"./{png_filename}",  # Percorso relativo all'immagine della mappa
         "resolution": 0.050000,  # Risoluzione della mappa (ad esempio, 5 cm per pixel)
         "origin": [-32.507755, -27.073547, 0.000000],  # Coordinate di origine della mappa
         "negate": 0,  # Indica se invertire i colori dell'immagine
@@ -416,18 +421,21 @@ def save_as_yaml(yaml_filename, pgm_filename):
 
 def create_map_directory(map_name):
     """
-    Assicura che esista una cartella con il nome della mappa.
+    Crea una nuova cartella per la mappa, eliminando quella esistente se presente.
 
     Parameters:
         map_name (str): Il nome della mappa e della cartella.
 
     Returns:
-        str: Il nome della directory creata o esistente.
+        str: Il nome della directory creata.
     """
-    # Crea una directory con il nome della mappa se non esiste già
-    if not os.path.exists(map_name):
-        os.makedirs(map_name)
+    # Elimina la cartella esistente, se presente
+    if os.path.exists(map_name):
+        shutil.rmtree(map_name)
+    # Crea una nuova cartella
+    os.makedirs(map_name)
     return map_name  # Restituisce il nome della directory
+
 
 def save_pixel_to_map_transformations(topo_map, filename, transformer):
     """
@@ -452,7 +460,7 @@ def save_pixel_to_map_transformations(topo_map, filename, transformer):
             # Scrivi la trasformazione nel file
             file.write(f"Pixel ({x_pixel}, {y_pixel}) -> Mappa ({x_map:.2f}, {y_map:.2f})\n")
 
-    logging.info(f"Transformazione salvata in {filename}")
+    print(f"Transformazione salvata in {filename}")
 
 # --- Funzione di conversione dei nodi in waypoints ---
 def convert_nodes_to_waypoints(topo_map, transformer):
@@ -472,6 +480,39 @@ def convert_nodes_to_waypoints(topo_map, transformer):
         x_map, y_map = transformer.pixel_to_map(node)
         waypoints.append((x_map, y_map))
     return waypoints
+
+def add_waypoints_to_original_map(original_map_path, waypoints, output_map_path_png, output_map_path_pgm, transformer):
+    """
+    Sovrappone i waypoints alla mappa originale e salva l'immagine risultante in formato PNG e PGM.
+
+    Parameters:
+        original_map_path (str): Il percorso della mappa originale.
+        waypoints (list): Lista di waypoints da aggiungere alla mappa.
+        output_map_path_png (str): Il percorso dove salvare la mappa con i waypoints in formato PNG.
+        output_map_path_pgm (str): Il percorso dove salvare la mappa con i waypoints in formato PGM.
+        transformer (CoordinateTransformer): Oggetto per trasformare le coordinate.
+    """
+    # Carica la mappa originale
+    original_map = cv2.imread(original_map_path, cv2.IMREAD_GRAYSCALE)
+    if original_map is None:
+        raise FileNotFoundError(f"Errore: impossibile aprire il file {original_map_path}")
+    
+    # Converte i waypoints in coordinate pixel e li disegna sulla mappa
+    for waypoint in waypoints:
+        x_map, y_map = waypoint
+        y_pixel, x_pixel = transformer.map_to_pixel(x_map, y_map)
+        
+        # Disegna ogni waypoint come cerchio sulla mappa
+        cv2.circle(original_map, (x_pixel, y_pixel), 6, 0, -1)  # Cerchio nero per waypoint
+
+    # Salva la mappa con i waypoints in formato PNG
+    cv2.imwrite(output_map_path_png, original_map)
+    print(f"Mappa con waypoints salvata in {output_map_path_png}")
+
+    # Salva la mappa con i waypoints in formato PGM
+    Image.fromarray(original_map).save(output_map_path_pgm, format="PPM")
+    print(f"Mappa con waypoints salvata in {output_map_path_pgm}")
+
 
 # --- Funzione principale ---
 def process_map(image_path):
@@ -496,28 +537,28 @@ def process_map(image_path):
     transformer = CoordinateTransformer(image_height, config.resolution, config.origin)
 
     cleaned_map = clean_map(occupancy_grid)  # Applica la pulizia della mappa
-    save_as_pgm(cleaned_map, os.path.join(map_directory, f"{map_name}_cleaned_map.pgm"))
+    save_as_png(cleaned_map, os.path.join(map_directory, f"{map_name}_cleaned_map.png"))
 
     # Passo 2: Crea la mappa binaria
     binary_map = create_binary_map(cleaned_map)  # Usa la mappa pulita come input
-    save_as_pgm(binary_map, os.path.join(map_directory, f"{map_name}_binary_map.pgm"))
+    save_as_png(binary_map, os.path.join(map_directory, f"{map_name}_binary_map.png"))
 
     # Passo 3: Calcola la mappa delle distanze euclidee
     distance_map = compute_distance_map(binary_map)
     # Normalizza la mappa delle distanze per la visualizzazione
     distance_map_normalized = (distance_map / np.max(distance_map) * 255).astype(np.uint8)
     # Salva la mappa delle distanze normalizzata
-    save_as_pgm(distance_map_normalized, os.path.join(map_directory, f"{map_name}_distance_map.pgm"))
+    save_as_png(distance_map_normalized, os.path.join(map_directory, f"{map_name}_distance_map.png"))
 
     # Passo 4: Crea le linee di Voronoi
     voronoi_map = create_voronoi_lines(distance_map)
     # Salva la mappa di Voronoi
-    save_as_pgm(voronoi_map, os.path.join(map_directory, f"{map_name}_voronoi_map.pgm"))
+    save_as_png(voronoi_map, os.path.join(map_directory, f"{map_name}_voronoi_map.png"))
 
     # Passo 5: Scheletrizza le linee di Voronoi
     voronoi_skeleton = skeletonize_voronoi(voronoi_map)
     # Salva lo scheletro di Voronoi
-    save_as_pgm(voronoi_skeleton, os.path.join(map_directory, f"{map_name}_skeleton_voronoi.pgm"))
+    save_as_png(voronoi_skeleton, os.path.join(map_directory, f"{map_name}_skeleton_voronoi.png"))
 
     # Passo 6: Creazione del grafo topologico utilizzando lo scheletro
     topo_map = create_topological_graph_using_skeleton(
@@ -528,6 +569,15 @@ def process_map(image_path):
         origin=config.origin,
         image_height=image_height
     )
+
+    # Converte i nodi in waypoints
+    waypoints = convert_nodes_to_waypoints(topo_map, transformer)
+    # Salva la mappa originale con i waypoints in formato PNG e PGM
+    output_map_with_waypoints_png = os.path.join(map_directory, f"{map_name}_with_waypoints.png")
+    output_map_with_waypoints_pgm = os.path.join(map_directory, f"{map_name}_with_waypoints.pgm")
+    add_waypoints_to_original_map(image_path, waypoints, output_map_with_waypoints_png, output_map_with_waypoints_pgm, transformer)
+
+
 
     # Passo 7: Salva il grafo topologico come JSON
     save_graph_as_json(topo_map, os.path.join(map_directory, f"{map_name}_topological_graph.json"), transformer)
@@ -551,7 +601,6 @@ def process_map(image_path):
 
 # ### UBUNTU VERSION
 # if __name__ == "__main__":
-#     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 #     # Percorso di default per la mappa
 #     default_image_path = "/home/beniamino/turtlebot4/diem_turtlebot_ws/src/map/diem_map.pgm"
@@ -572,7 +621,6 @@ def process_map(image_path):
 #### WINDOWS  VERSION
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
     # Percorso di default per la mappa, con doppie backslash per Windows
     default_image_path = os.path.join("..", "diem_map.pgm")
 

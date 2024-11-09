@@ -146,24 +146,23 @@ Al termine dell'esecuzione, verrà creata una cartella con il nome della mappa c
 
 ### 3. Rappresentazione del Grafo Topologico
 - Formato JSON con la struttura del grafo topologico.
-
 # PHASE 2
-
 
 ## File di Visualizzazione del Grafo
 
-Il file `visualize_graph.py` consente di visualizzare il grafo topologico generato e di salvarlo come immagine.
+Il file `visualize_graph.py` consente di visualizzare il grafo topologico generato sovrapponendolo a un'immagine di mappa di sfondo e di salvare il risultato sia in formato PNG che PGM.
 
 ### Requisiti
 
 - `matplotlib`
 - `networkx`
-- `json`
+- `Pillow`
+- `numpy`
 
 Assicurati di aver installato queste librerie utilizzando il seguente comando:
 
 ```bash
-pip install matplotlib networkx
+pip install matplotlib networkx pillow numpy
 ```
 
 ### Guida all'Utilizzo
@@ -176,24 +175,26 @@ python visualize_graph.py <path_to_json>
 
 ### Descrizione del File `visualize_graph.py`
 
-- **Input**: Il percorso di un file JSON contenente la descrizione del grafo topologico (nodi e archi).
-- **Output**: Un'immagine PNG del grafo topologico, salvata nella directory `graph`.
+- **Input**:
+  - Un file JSON contenente la descrizione del grafo topologico (nodi e archi) con coordinate basate sul sistema RVIZ.
+  - Il percorso dell'immagine `diem_map.pgm` utilizzata come sfondo della mappa.
+- **Output**: Due file immagine del grafo topologico sovrapposto alla mappa, salvati nella directory `graph`:
+  - Un file PNG per la visualizzazione.
+  - Un file PGM per l'utilizzo con strumenti che richiedono formati di immagine compatibili con ROS.
+  
 - **Funzionalità**:
-  - Carica i dati del grafo da un file JSON.
-  - Disegna il grafo utilizzando `matplotlib` e `networkx`.
-  - Salva l'immagine del grafo con lo stesso nome del file JSON in una cartella denominata `graph`.
+  - Converte le coordinate del grafo da RVIZ a coordinate pixel, utilizzando i valori di `origin` e `resolution` specificati nella configurazione YAML della mappa.
+  - Disegna il grafo topologico utilizzando `matplotlib` e `networkx` sopra l'immagine della mappa.
+  - Salva l'immagine del grafo sovrapposto in formato PNG e PGM nella cartella `graph`.
 
 ### Esempio di Utilizzo
 
-Supponiamo di aver generato un file JSON chiamato `diem_map_topological_graph.json`. Per visualizzarne il contenuto come immagine:
+Supponiamo di aver generato un file JSON chiamato `navigation_graph.json`. Per visualizzare e sovrapporre il grafo alla mappa come immagine:
 
 ```bash
-python visualize_graph.py diem_map_topological_graph.json
+python visualize_graph.py navigation_graph.json
 ```
 
-Dopo l'esecuzione, verrà creata un'immagine nella cartella `graph` con il nome `diem_map_topological_graph.png`.
-
-### Motivazione
-
-Visualizzare il grafo topologico sotto forma di immagine facilita la verifica della correttezza della struttura generata. Consente di individuare errori o miglioramenti nel posizionamento dei nodi e degli archi, assicurando che il grafo rappresenti accuratamente l'ambiente da navigare.
-
+Dopo l'esecuzione, verranno create due immagini nella cartella `graph`:
+- `navigation_graph_graph_map.png`: la sovrapposizione del grafo alla mappa in formato PNG.
+- `navigation_graph_graph_map.pgm`: la sovrapposizione del grafo alla mappa in formato PGM, utile per il caricamento in ROS.
