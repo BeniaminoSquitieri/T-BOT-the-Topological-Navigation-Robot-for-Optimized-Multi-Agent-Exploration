@@ -125,3 +125,8 @@ Sostituire `your_script.py` con il nome del file contenente il codice e `path_to
 - **Interfaccia Utente**: Potrebbe essere utile aggiungere una GUI per facilitare l'input dei dati e la visualizzazione dei risultati.
 - **Visualizzazione Grafica**: Integrare la visualizzazione del grafo e del percorso trovato utilizzando librerie come Matplotlib.
 
+
+# Move your robot using rviz in simulation(NO DA CONSEGNARE)
+```bash
+ros2 launch turtlebot4_ignition_bringup turtlebot4_ignition.launch.py nav2:=true slam:=false localization:=true rviz:=true
+```
