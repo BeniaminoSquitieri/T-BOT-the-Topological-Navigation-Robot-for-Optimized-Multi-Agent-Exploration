@@ -1,13 +1,13 @@
-# Importazione delle librerie necessarie
-import os  # Modulo per interagire con il sistema operativo
-import numpy as np  # Libreria per operazioni numeriche avanzate su array
-import cv2  # Libreria OpenCV per l'elaborazione delle immagini
-import networkx as ntx  # Libreria per la creazione e manipolazione di grafi
-from scipy.ndimage import distance_transform_edt, convolve, generic_filter  # Funzioni per elaborazione di immagini
-from skimage.morphology import skeletonize  # Funzione per scheletrizzare immagini binarie
-from PIL import Image  # Libreria per la manipolazione delle immagini
-import yaml  # Libreria per leggere e scrivere file YAML
-import argparse  # Modulo per gestire gli argomenti da riga di comando
+# Import necessary libraries
+import os  # Module for interacting with the operating system
+import numpy as np  # Library for advanced numerical operations on arrays
+import cv2  # OpenCV library for image processing
+import networkx as ntx  # Library for creating and manipulating graphs
+from scipy.ndimage import distance_transform_edt, convolve, generic_filter  # Functions for image processing
+from skimage.morphology import skeletonize  # Function to skeletonize binary images
+from PIL import Image  # Library for image manipulation
+import yaml  # Library for reading and writing YAML files
+import argparse  # Module for handling command-line arguments
 from sklearn.cluster import DBSCAN
 from scipy.spatial import cKDTree
 from skimage.draw import line as draw_line
@@ -16,12 +16,12 @@ import shutil
 
 class CoordinateTransformer:
     """
-    Classe per trasformare le coordinate tra il sistema di riferimento della mappa e i pixel dell'immagine.
+    Class to transform coordinates between the map reference system and image pixels.
 
     Parameters:
-        image_height (int): Altezza dell'immagine in pixel.
-        resolution (float): Risoluzione della mappa (metri per pixel).
-        origin (tuple): Origine della mappa nel sistema di riferimento (x, y).
+        image_height (int): Image height in pixels.
+        resolution (float): Map resolution (meters per pixel).
+        origin (tuple): Map origin in the reference system (x, y).
     """
     def __init__(self, image_height, resolution, origin):
         self.image_height = image_height
@@ -30,7 +30,7 @@ class CoordinateTransformer:
     
     def pixel_to_map(self, node):
         """
-        Converte le coordinate di un nodo da pixel a coordinate mappa con inversione dell'asse y.
+        Converts a node's coordinates from pixel to map coordinates, with y-axis inversion.
         """
         y_pixel, x_pixel = node
         x_map = self.origin[0] + x_pixel * self.resolution
@@ -39,7 +39,7 @@ class CoordinateTransformer:
 
     def map_to_pixel(self, x_map, y_map):
         """
-        Converte le coordinate mappa di un punto in coordinate pixel con inversione dell'asse y.
+        Converts map coordinates of a point to pixel coordinates with y-axis inversion.
         """
         x_pixel = int((x_map - self.origin[0]) / self.resolution)
         y_pixel = self.image_height - int((y_map - self.origin[1]) / self.resolution)
@@ -47,433 +47,433 @@ class CoordinateTransformer:
 
 class Config:
     """
-    Classe di configurazione per i parametri della mappa e del grafo.
+    Configuration class for map and graph parameters.
 
-    Attributi:
-        resolution (float): Risoluzione della mappa in metri per pixel.
-        origin (tuple): Coordinate di origine della mappa (x, y).
-        merge_threshold (int): Distanza in pixel per fondere i nodi vicini.
-        max_connection_distance (int): Distanza massima in pixel per collegare i nodi nel grafo.
+    Attributes:
+        resolution (float): Map resolution in meters per pixel.
+        origin (tuple): Map origin coordinates (x, y).
+        merge_threshold (int): Distance in pixels for merging close nodes.
+        max_connection_distance (int): Maximum distance in pixels to connect nodes in the graph.
     """
     def __init__(self):
-        self.resolution = 0.05  # metri per pixel
+        self.resolution = 0.05  # meters per pixel
         self.origin = (-32.507755, -27.073547)  # (x_origin, y_origin)
-        self.merge_threshold = 50  # in pixel
-        self.max_connection_distance = 100000  # in pixel
+        self.merge_threshold = 50  # in pixels
+        self.max_connection_distance = 100000  # in pixels
 
-# --- Funzioni di base ---
+# --- Basic functions ---
 
 def load_map(image_path):
     """
-    Carica la mappa di occupazione da un file immagine in scala di grigi.
+    Loads the occupancy map from a grayscale image file.
 
     Parameters:
-        image_path (str): Il percorso del file immagine da caricare.
+        image_path (str): Path to the image file to load.
 
     Returns:
-        numpy.ndarray: L'immagine caricata in scala di grigi.
+        numpy.ndarray: The loaded grayscale image.
     """
-    # Carica l'immagine in scala di grigi
+    # Load the grayscale image
     occupancy_grid = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
     if occupancy_grid is None:
-        # Solleva un'eccezione se l'immagine non può essere caricata
-        raise FileNotFoundError(f"Errore: impossibile aprire il file {image_path}")
-    return occupancy_grid  # Restituisce l'immagine caricata
+        # Raise an exception if the image cannot be loaded
+        raise FileNotFoundError(f"Error: unable to open file {image_path}")
+    return occupancy_grid  # Returns the loaded image
 
 def clean_map(occupancy_grid):
     """
-    Applica trasformazioni morfologiche per rappresentare la mappa in forma di rettangoli orizzontali e verticali.
+    Applies morphological transformations to represent the map as horizontal and vertical rectangles.
 
     Parameters:
-        occupancy_grid (numpy.ndarray): L'immagine in scala di grigi della mappa.
+        occupancy_grid (numpy.ndarray): The grayscale image of the map.
 
     Returns:
-        numpy.ndarray: La mappa trasformata in rettangoli.
+        numpy.ndarray: The transformed map in rectangles.
     """
-    # Kernel rettangolare grande per la chiusura
-    kernel_close = cv2.getStructuringElement(cv2.MORPH_RECT, (60, 60)) #Questa chiusura iniziale utilizza un kernel grande, ideale per unire piccoli spazi tra rettangoli.
+    # Large rectangular kernel for closing
+    kernel_close = cv2.getStructuringElement(cv2.MORPH_RECT, (60, 60)) # This initial closure uses a large kernel, ideal for connecting small spaces between rectangles.
     closed_map = cv2.morphologyEx(occupancy_grid, cv2.MORPH_CLOSE, kernel_close)
 
-    # Dilatazione per ampliare i rettangoli, mantenendo direzioni preferenziali
-    kernel_dilate = cv2.getStructuringElement(cv2.MORPH_RECT, (25, 25))  # Più ampio in una direzione La dilatazione ha un kernel orientato più largo in una direzione, il che aiuta a espandere i rettangoli nelle direzioni orizzontale o verticale.
+    # Dilation to expand rectangles, maintaining preferred directions
+    kernel_dilate = cv2.getStructuringElement(cv2.MORPH_RECT, (25, 25))  # Wider in one direction. Dilation has an oriented kernel that helps expand rectangles in horizontal or vertical directions.
     dilated_map = cv2.dilate(closed_map, kernel_dilate, iterations=1)
 
-    # Apertura per rimuovere piccole irregolarità e sporgenze
-    kernel_open = cv2.getStructuringElement(cv2.MORPH_RECT, (40, 65)) # L'apertura con un kernel più piccolo rimuove dettagli indesiderati lasciando intatte le forme più grandi.
+    # Opening to remove small irregularities and protrusions
+    kernel_open = cv2.getStructuringElement(cv2.MORPH_RECT, (40, 65)) # Opening with a smaller kernel removes unwanted details while preserving larger shapes.
     opened_map = cv2.morphologyEx(dilated_map, cv2.MORPH_OPEN, kernel_open)
 
-    # Erosione finale per riportare alla forma originale mantenendo i rettangoli
-    kernel_erode = cv2.getStructuringElement(cv2.MORPH_RECT, (30, 30)) # L'erosione finale aiuta a ripulire i bordi e ridurre la struttura alla sua dimensione rettangolare più coerente.
+    # Final erosion to restore the original shape while keeping the rectangles
+    kernel_erode = cv2.getStructuringElement(cv2.MORPH_RECT, (30, 30)) # Final erosion helps clean up edges and reduce structure to a more consistent rectangular shape.
     final_map = cv2.erode(opened_map, kernel_erode, iterations=1)
 
     return final_map
 
 def create_binary_map(occupancy_grid):
     """
-    Converte l'immagine della mappa in una mappa binaria.
+    Converts the map image into a binary map.
 
     Parameters:
-        occupancy_grid (numpy.ndarray): L'immagine in scala di grigi della mappa.
+        occupancy_grid (numpy.ndarray): The grayscale image of the map.
 
     Returns:
-        numpy.ndarray: La mappa binaria risultante.
+        numpy.ndarray: The resulting binary map.
     """
-    # Utilizza una soglia per binarizzare l'immagine
-    # I pixel con valore superiore a 240 diventano 1 (bianco), altrimenti 0 (nero)
+    # Uses a threshold to binarize the image
+    # Pixels with values above 240 become 1 (white), otherwise 0 (black)
     _, binary_map = cv2.threshold(occupancy_grid, 240, 1, cv2.THRESH_BINARY)
-    return binary_map  # Restituisce la mappa binaria
+    return binary_map  # Returns the binary map
 
 def compute_distance_map(binary_map):
     """
-    Calcola la mappa delle distanze euclidee dai pixel non zero.
+    Calculates the Euclidean distance map from non-zero pixels.
 
     Parameters:
-        binary_map (numpy.ndarray): La mappa binaria della mappa.
+        binary_map (numpy.ndarray): The binary map.
 
     Returns:
-        numpy.ndarray: La mappa delle distanze euclidee.
+        numpy.ndarray: The Euclidean distance map.
     """
-    # Calcola la mappa delle distanze euclidee
+    # Calculates the Euclidean distance map
     distance_map = distance_transform_edt(binary_map)
-    return distance_map  # Restituisce la mappa delle distanze
+    return distance_map  # Returns the distance map
 
 def create_voronoi_lines(distance_map):
     """
-    Crea le linee di Voronoi identificando i pixel con vicini di valori di distanza diversi.
+    Creates Voronoi lines by identifying pixels with neighboring values of different distances.
 
     Parameters:
-        distance_map (numpy.ndarray): La mappa delle distanze euclidee.
+        distance_map (numpy.ndarray): The Euclidean distance map.
 
     Returns:
-        numpy.ndarray: La mappa di Voronoi risultante.
+        numpy.ndarray: The resulting Voronoi map.
     """
-    # Definisce un kernel booleano per escludere il pixel centrale
+    # Defines a boolean kernel to exclude the central pixel
     kernel = np.array([[1, 1, 1],
                        [1, 0, 1],
                        [1, 1, 1]], dtype=bool)
 
-    # Definisce una funzione che calcola la differenza tra il valore massimo e minimo nella finestra
+    # Defines a function that calculates the difference between the maximum and minimum value in the window
     def local_range(values):
         return values.max() - values.min()
 
-    # Applica la funzione local_range su ogni pixel utilizzando il kernel
+    # Applies the local_range function on each pixel using the kernel
     local_ranges = generic_filter(distance_map, local_range, footprint=kernel)
-    # Crea la mappa di Voronoi dove la differenza locale è maggiore di zero
+    # Creates the Voronoi map where the local difference is greater than zero
     voronoi_map = (local_ranges > 0).astype(np.uint8)
-    # Imposta i bordi a zero per coerenza con il metodo originale
+    # Sets the edges to zero for consistency with the original method
     voronoi_map[0, :] = 0
     voronoi_map[-1, :] = 0
     voronoi_map[:, 0] = 0
     voronoi_map[:, -1] = 0
 
-    return voronoi_map  # Restituisce la mappa di Voronoi
+    return voronoi_map  # Returns the Voronoi map
 
 def skeletonize_voronoi(voronoi_map):
     """
-    Scheletrizza la mappa di Voronoi per ottenere linee sottili.
+    Skeletonizes the Voronoi map to obtain thin lines.
 
     Parameters:
-        voronoi_map (numpy.ndarray): La mappa di Voronoi.
+        voronoi_map (numpy.ndarray): The Voronoi map.
 
     Returns:
-        numpy.ndarray: L'immagine scheletrizzata della mappa di Voronoi.
+        numpy.ndarray: The skeletonized Voronoi map image.
     """
-    # Scheletrizza la mappa di Voronoi
+    # Skeletonizes the Voronoi map
     return skeletonize(voronoi_map)
 
 def convert_to_map_coordinates(node, image_height, resolution, origin):
     """
-    Converte le coordinate del nodo da pixel a coordinate mappa con inversione dell'asse y.
+    Converts the node coordinates from pixel to map coordinates with y-axis inversion.
 
     Parameters:
-        node (tuple): Coordinate del nodo in pixel (y, x).
-        image_height (int): Altezza dell'immagine in pixel.
-        resolution (float): La risoluzione della mappa (metri per pixel).
-        origin (tuple): L'origine della mappa (x, y).
+        node (tuple): Node coordinates in pixels (y, x).
+        image_height (int): Image height in pixels.
+        resolution (float): Map resolution (meters per pixel).
+        origin (tuple): Map origin (x, y).
 
     Returns:
-        tuple: Coordinate (x_map, y_map) nel sistema di riferimento della mappa.
+        tuple: Coordinates (x_map, y_map) in the map reference system.
     """
-    y_pixel, x_pixel = node  # Nota che l'ordine è (y, x)
+    y_pixel, x_pixel = node  # Note that the order is (y, x)
 
-    # Invertiamo l'asse Y: usiamo (image_height - y_pixel) per la conversione
+    # We invert the Y-axis: use (image_height - y_pixel) for conversion
     x_map = origin[0] + x_pixel * resolution
     y_map = origin[1] + (image_height - y_pixel) * resolution
 
     return x_map, y_map
 
-# --- Funzione di verifica del percorso attraverso pixel bianchi ---
-def create_topological_graph_using_skeleton(voronoi_skeleton,  merge_threshold=50, max_connection_distance=100000, resolution=0.05, origin=(-32.507755, -27.073547), image_height=None):
+# --- Function to check the path through white pixels ---
+def create_topological_graph_using_skeleton(voronoi_skeleton, merge_threshold=50, max_connection_distance=100000, resolution=0.05, origin=(-32.507755, -27.073547), image_height=None):
     """
-    Crea un grafo topologico basato sullo scheletro di Voronoi,
-    con nodi distribuiti uniformemente sia lungo l'asse X che Y.
-    I nodi vicini entro una certa soglia vengono fusi.
+    Creates a topological graph based on the Voronoi skeleton,
+    with nodes evenly distributed along both the X and Y axes.
+    Nodes close to each other within a certain threshold are merged.
     """
     topo_map = ntx.Graph()
     
-    # Definisce un kernel per contare i vicini (esclude il pixel centrale)
+    # Define a kernel to count neighbors (excluding the central pixel)
     kernel = np.array([[1, 1, 1],
                        [1, 0, 1],
                        [1, 1, 1]], dtype=int)
     
-    # Conta il numero di vicini per ogni pixel dello scheletro
+    # Count the number of neighbors for each pixel in the skeleton
     neighbor_count = convolve(voronoi_skeleton.astype(int), kernel, mode='constant', cval=0)
     
-    # Identifica i nodi agli incroci o estremità (dove il numero di vicini è diverso da 2)
+    # Identify nodes at intersections or endpoints (where the number of neighbors is not equal to 2)
     node_positions = np.column_stack(np.where((voronoi_skeleton == 1) & (neighbor_count != 2)))
     
-    # Applica DBSCAN per fondere i nodi vicini
+    # Apply DBSCAN to merge close nodes
     clustering = DBSCAN(eps=merge_threshold, min_samples=1).fit(node_positions)
     
-    # Calcola il centroide di ciascun cluster per ottenere i nodi fusi
+    # Calculate the centroid of each cluster to get merged nodes
     fused_nodes = []
     for cluster_id in np.unique(clustering.labels_):
         cluster_points = node_positions[clustering.labels_ == cluster_id]
         centroid = np.mean(cluster_points, axis=0).astype(int)
         fused_nodes.append(tuple(centroid))
     
-    print("Fusione dei nodi completata. Numero di nodi dopo la fusione: %d", len(fused_nodes))
+    print("Node fusion complete. Number of nodes after merging:", len(fused_nodes))
 
     
-    # Aggiunge i nodi fusi al grafo
+    # Add the merged nodes to the graph
     topo_map.add_nodes_from(fused_nodes)
     
-    # # Costruisce un KD-Tree per cercare nodi vicini efficientemente
+    # # Construct a KD-Tree to efficiently search for close nodes
     # node_tree = cKDTree(fused_nodes)
     
-    # # Trova coppie di nodi entro la distanza massima
+    # # Find pairs of nodes within the maximum distance
     # pairs = node_tree.query_pairs(r=max_connection_distance)
     
-    # # Procedura per la creazione degli archi
+    # # Procedure for creating edges
     # for i, j in pairs:
     #     node_i = fused_nodes[i]
     #     node_j = fused_nodes[j]
     #     if check_line_passes_through_skeleton(node_i, node_j, voronoi_skeleton):
     #         topo_map.add_edge(node_i, node_j)
-    #         # Debug opzionale
-    #         # print(f"Arco creato tra {node_i} e {node_j}")
+    #         # Optional debugging
+    #         # print(f"Edge created between {node_i} and {node_j}")
     
     return topo_map
 
 
-# Funzione di controllo del percorso attraverso lo scheletro
+# Function to check path through the skeleton
 def check_line_passes_through_skeleton(node1, node2, skeleton):
     """
-    Verifica se una linea tra due nodi passa interamente attraverso lo scheletro.
+    Checks if a line between two nodes passes entirely through the skeleton.
     """
-    y0, x0 = node1  # Coordinate del primo nodo
-    y1, x1 = node2  # Coordinate del secondo nodo
+    y0, x0 = node1  # First node coordinates
+    y1, x1 = node2  # Second node coordinates
 
-    # Usa l'algoritmo di Bresenham per ottenere i pixel lungo la linea
+    # Use Bresenham's algorithm to get the pixels along the line
     rr, cc = draw_line(y0, x0, y1, x1)
 
-    # Verifica che gli indici siano all'interno dei limiti dell'immagine
+    # Ensure indices are within image boundaries
     valid_indices = (rr >= 0) & (rr < skeleton.shape[0]) & \
                     (cc >= 0) & (cc < skeleton.shape[1])
     rr = rr[valid_indices]
     cc = cc[valid_indices]
 
-    # Verifica se tutti i punti lungo la linea appartengono allo scheletro
+    # Check if all points along the line belong to the skeleton
     return np.all(skeleton[rr, cc] == 1)
 
 
-# --- Funzione per convertire i valori in formati Python standard ---
+# --- Function to convert NumPy types to standard Python types ---
 def numpy_to_python(obj):
     """
-    Converte i tipi NumPy in tipi Python standard.
+    Converts NumPy types to standard Python types.
     Parameters:
-        obj: Oggetto NumPy (array o valore).
+        obj: NumPy object (array or value).
     Returns:
-        Oggetto convertito in un tipo standard Python (float o int).
+        Object converted to a standard Python type (float or int).
     """
     if isinstance(obj, np.ndarray):
-        return obj.tolist()  # Se è un array NumPy, lo converte in lista
+        return obj.tolist()  # If it's a NumPy array, convert to list
     elif isinstance(obj, np.generic):
-        return obj.item()  # Se è un oggetto NumPy generico, lo converte in un valore Python
+        return obj.item()  # If it's a generic NumPy object, convert to a Python value
     return obj
 
-# --- Funzione per salvare i waypoints con label in un file YAML ---
+# --- Function to save waypoints with labels in a YAML file ---
 
 def save_waypoints_as_yaml(waypoints, filename):
     """
-    Salva i waypoints con label in un file YAML.
+    Saves waypoints with labels in a YAML file.
 
     Parameters:
-        waypoints (list): Lista dei waypoints (x, y) da salvare.
-        filename (str): Il percorso del file YAML in cui salvare i waypoints.
+        waypoints (list): List of waypoints (x, y) to save.
+        filename (str): Path to the YAML file to save the waypoints.
     """
-    # Crea un dizionario per i dati dei waypoints, assegnando un label a ciascun nodo
+    # Create a dictionary for waypoint data, assigning a label to each node
     waypoints_data = {"waypoints": [{"label": f"node_{i+1}", "x": numpy_to_python(wp[0]), "y": numpy_to_python(wp[1])} 
                                     for i, wp in enumerate(waypoints)]}
 
-    # Salva il dizionario in formato YAML
+    # Save the dictionary in YAML format
     with open(filename, 'w') as yaml_file:
         yaml.dump(waypoints_data, yaml_file, default_flow_style=False)
 
-# --- Funzione per salvare un'immagine png ---
+# --- Function to save an image as PNG ---
 
 def save_as_png(image, filename):
     """
-    Salva un'immagine numpy array in formato PNG.
+    Saves a NumPy array image as a PNG file.
 
     Parameters:
-        image (numpy.ndarray): L'immagine da salvare.
-        filename (str): Il percorso del file dove salvare l'immagine.
+        image (numpy.ndarray): The image to save.
+        filename (str): The path to the file to save the image.
     """
-    # Converte l'immagine in uint8 e scala i valori da 0 a 255 se necessario
+    # Convert the image to uint8 and scale values from 0 to 255 if necessary
     Image.fromarray((image * 255).astype(np.uint8)).save(filename, format="PNG")
 
 
 
 def save_graph_as_json(topo_map, filename, transformer):
     """
-    Salva il grafo topologico con i nodi e archi in formato JSON.
+    Saves the topological graph with nodes and edges in JSON format.
 
     Parameters:
-        topo_map (networkx.Graph): Il grafo topologico con i nodi e archi.
-        filename (str): Il percorso del file JSON in cui salvare il grafo.
-        transformer (CoordinateTransformer): Oggetto per trasformare le coordinate pixel in coordinate mappa.
+        topo_map (networkx.Graph): The topological graph with nodes and edges.
+        filename (str): Path to the JSON file to save the graph.
+        transformer (CoordinateTransformer): Object to transform pixel coordinates to map coordinates.
     """
-    # Converte i nodi in coordinate mappa e li aggiunge a una lista di nodi
+    # Convert nodes to map coordinates and add them to a list of nodes
     nodes = []
     for i, node in enumerate(topo_map.nodes()):
         x_map, y_map = transformer.pixel_to_map(node)
         nodes.append({"label": f"node_{i+1}", "x": x_map, "y": y_map})
 
-    # Converte gli archi in un formato compatibile con JSON
+    # Convert edges to a JSON-compatible format
     edges = [{"source": f"node_{i+1}", "target": f"node_{j+1}"} for i, j in topo_map.edges()]
 
-    # Struttura i dati del grafo in formato JSON
+    # Structure graph data in JSON format
     graph_data = {
         "nodes": nodes,
         "edges": edges
     }
 
-    # Salva i dati in un file JSON
+    # Save the data to a JSON file
     with open(filename, 'w') as json_file:
         json.dump(graph_data, json_file, indent=4)
     
-    print(f"Grafo topologico salvato in formato JSON in {filename}")
+    print(f"Topological graph saved in JSON format at {filename}")
 
-# --- Funzione per salvare la mappa topologica con nodi in formato png ---0
+# --- Function to save the topological map with nodes in PNG format ---
 def save_topological_map_with_nodes(skeleton, topo_map, png_filename, transformer):
     """
-    Sovrappone i nodi del grafo alla mappa scheletrizzata, disegnando le coordinate di ciascun nodo sull'immagine,
-    e salva l'immagine risultante in formato PNG.
+    Overlays the graph nodes on the skeleton map, drawing the coordinates of each node on the image,
+    and saves the resulting image as a PNG file.
     
     Parameters:
-        skeleton (numpy.ndarray): La mappa scheletrizzata in cui sovrapporre i nodi.
-        topo_map (networkx.Graph): Il grafo topologico con i nodi.
-        png_filename (str): Il percorso del file PNG in cui salvare l'immagine.
-        transformer (CoordinateTransformer): Oggetto per trasformare le coordinate dei nodi.
+        skeleton (numpy.ndarray): The skeleton map to overlay nodes on.
+        topo_map (networkx.Graph): The topological graph with nodes.
+        png_filename (str): Path to the PNG file to save the image.
+        transformer (CoordinateTransformer): Object to transform node coordinates.
     """
-    # Inverti l'immagine dello scheletro per migliorare la visibilità
+    # Invert the skeleton image for better visibility
     skeleton_with_nodes = 255 - (skeleton * 255).astype(np.uint8)
 
-    # Colore e font per i cerchi e il testo
-    node_color = 0  # Colore nero per i nodi
-    text_color = 0  # Colore nero per il testo
+    # Color and font for circles and text
+    node_color = 0  # Black color for nodes
+    text_color = 0  # Black color for text
     font = cv2.FONT_HERSHEY_SIMPLEX
     font_scale = 0.6
     thickness = 2
 
-    # Disegna i nodi usando le coordinate in pixel
+    # Draw nodes using pixel coordinates
     for node in topo_map.nodes():
         y_pixel, x_pixel = node
         x_map, y_map = transformer.pixel_to_map(node)
         coordinate_text = f"({x_map:.2f}, {y_map:.2f})"
 
-        # Disegna il nodo come cerchio
+        # Draw the node as a circle
         cv2.circle(skeleton_with_nodes, (x_pixel, y_pixel), 6, node_color, -1)
 
-        # Aggiungi il testo con le coordinate in metri accanto al nodo
+        # Add text with coordinates in meters next to the node
         cv2.putText(skeleton_with_nodes, coordinate_text, (x_pixel + 5, y_pixel - 5), font, font_scale, text_color, thickness)
 
-    # Salva l'immagine con i nodi e le coordinate disegnate in formato PNG
+    # Save the image with nodes and coordinates drawn in PNG format
     Image.fromarray(skeleton_with_nodes).save(png_filename, format="PNG")
-    print(f"Mappa con coordinate dei nodi salvata in {png_filename}")
+    print(f"Map with node coordinates saved at {png_filename}")
 
 
-# --- Funzione per salvare il file YAML associato ---
+# --- Function to save the associated YAML file ---
 
 def save_as_yaml(yaml_filename, png_filename):
     """
-    Crea un file YAML che contiene le informazioni necessarie per utilizzare la mappa in ROS2.
+    Creates a YAML file containing information required to use the map in ROS2.
 
     Parameters:
-        yaml_filename (str): Il percorso del file YAML da creare.
-        png_filename (str): Il nome del file png della mappa.
+        yaml_filename (str): Path to the YAML file to create.
+        png_filename (str): The name of the PNG map file.
     """
-    # Crea un dizionario con i dati necessari per il file YAML
+    # Create a dictionary with data required for the YAML file
     yaml_data = {
-        "image": f"./{png_filename}",  # Percorso relativo all'immagine della mappa
-        "resolution": 0.050000,  # Risoluzione della mappa (ad esempio, 5 cm per pixel)
-        "origin": [-32.507755, -27.073547, 0.000000],  # Coordinate di origine della mappa
-        "negate": 0,  # Indica se invertire i colori dell'immagine
-        "occupied_thresh": 0.65,  # Soglia per considerare un pixel come occupato
-        "free_thresh": 0.196  # Soglia per considerare un pixel come libero
+        "image": f"./{png_filename}",  # Relative path to the map image
+        "resolution": 0.050000,  # Map resolution (e.g., 5 cm per pixel)
+        "origin": [-32.507755, -27.073547, 0.000000],  # Map origin coordinates
+        "negate": 0,  # Indicates if image colors should be inverted
+        "occupied_thresh": 0.65,  # Threshold for considering a pixel as occupied
+        "free_thresh": 0.196  # Threshold for considering a pixel as free
     }
-    # Scrive il dizionario nel file YAML
+    # Write the dictionary to the YAML file
     with open(yaml_filename, 'w') as file:
         yaml.dump(yaml_data, file, default_flow_style=False)
 
-# --- Funzione per creare una cartella specifica per la mappa ---
+# --- Function to create a specific directory for the map ---
 
 def create_map_directory(map_name):
     """
-    Crea una nuova cartella per la mappa, eliminando quella esistente se presente.
+    Creates a new folder for the map, deleting any existing folder if present.
 
     Parameters:
-        map_name (str): Il nome della mappa e della cartella.
+        map_name (str): Name of the map and folder.
 
     Returns:
-        str: Il nome della directory creata.
+        str: Name of the created directory.
     """
-    # Elimina la cartella esistente, se presente
+    # Delete the existing folder, if present
     if os.path.exists(map_name):
         shutil.rmtree(map_name)
-    # Crea una nuova cartella
+    # Create a new folder
     os.makedirs(map_name)
-    return map_name  # Restituisce il nome della directory
+    return map_name  # Returns the directory name
 
 
 def save_pixel_to_map_transformations(topo_map, filename, transformer):
     """
-    Salva la trasformazione tra coordinate pixel e coordinate mappa in un file di testo.
+    Saves the transformation between pixel coordinates and map coordinates in a text file.
 
     Parameters:
-        topo_map (networkx.Graph): Il grafo topologico con i nodi.
-        filename (str): Il percorso del file di testo in cui salvare le trasformazioni.
-        transformer (CoordinateTransformer): L'oggetto per trasformare le coordinate.
+        topo_map (networkx.Graph): The topological graph with nodes.
+        filename (str): Path to the text file to save the transformations.
+        transformer (CoordinateTransformer): The object for coordinate transformation.
     """
     with open(filename, 'w') as file:
-        file.write("Transformazione tra coordinate pixel e coordinate mappa:\n")
-        file.write("Formato: (Pixel X, Pixel Y) -> (Mappa X, Mappa Y)\n\n")
+        file.write("Transformation between pixel and map coordinates:\n")
+        file.write("Format: (Pixel X, Pixel Y) -> (Map X, Map Y)\n\n")
 
         for node in topo_map.nodes():
-            # Coordinate in pixel del nodo
+            # Node pixel coordinates
             y_pixel, x_pixel = node
 
-            # Conversione alle coordinate mappa
+            # Conversion to map coordinates
             x_map, y_map = transformer.pixel_to_map(node)
 
-            # Scrivi la trasformazione nel file
-            file.write(f"Pixel ({x_pixel}, {y_pixel}) -> Mappa ({x_map:.2f}, {y_map:.2f})\n")
+            # Write the transformation to the file
+            file.write(f"Pixel ({x_pixel}, {y_pixel}) -> Map ({x_map:.2f}, {y_map:.2f})\n")
 
-    print(f"Transformazione salvata in {filename}")
+    print(f"Transformation saved at {filename}")
 
-# --- Funzione di conversione dei nodi in waypoints ---
+# --- Function to convert nodes into waypoints ---
 def convert_nodes_to_waypoints(topo_map, transformer):
     """
-    Converte i nodi del grafo in waypoints nel sistema di riferimento della mappa.
+    Converts graph nodes into waypoints in the map reference system.
 
     Parameters:
-        topo_map (networkx.Graph): Il grafo topologico con i nodi.
-        resolution (float): La risoluzione della mappa (metri per pixel).
-        origin (tuple): L'origine della mappa nel sistema di riferimento (x, y, theta).
+        topo_map (networkx.Graph): The topological graph with nodes.
+        resolution (float): Map resolution (meters per pixel).
+        origin (tuple): Map origin in the reference system (x, y, theta).
 
     Returns:
-        list: Una lista di waypoints (x, y) nel sistema di riferimento della mappa.
+        list: A list of waypoints (x, y) in the map reference system.
     """
     waypoints = []
     for node in topo_map.nodes():
@@ -483,84 +483,84 @@ def convert_nodes_to_waypoints(topo_map, transformer):
 
 def add_waypoints_to_original_map(original_map_path, waypoints, output_map_path_png, output_map_path_pgm, transformer):
     """
-    Sovrappone i waypoints alla mappa originale e salva l'immagine risultante in formato PNG e PGM.
+    Overlays waypoints on the original map and saves the resulting image in PNG and PGM formats.
 
     Parameters:
-        original_map_path (str): Il percorso della mappa originale.
-        waypoints (list): Lista di waypoints da aggiungere alla mappa.
-        output_map_path_png (str): Il percorso dove salvare la mappa con i waypoints in formato PNG.
-        output_map_path_pgm (str): Il percorso dove salvare la mappa con i waypoints in formato PGM.
-        transformer (CoordinateTransformer): Oggetto per trasformare le coordinate.
+        original_map_path (str): Path to the original map.
+        waypoints (list): List of waypoints to add to the map.
+        output_map_path_png (str): Path to save the map with waypoints in PNG format.
+        output_map_path_pgm (str): Path to save the map with waypoints in PGM format.
+        transformer (CoordinateTransformer): Object to transform coordinates.
     """
-    # Carica la mappa originale
+    # Load the original map
     original_map = cv2.imread(original_map_path, cv2.IMREAD_GRAYSCALE)
     if original_map is None:
-        raise FileNotFoundError(f"Errore: impossibile aprire il file {original_map_path}")
+        raise FileNotFoundError(f"Error: unable to open file {original_map_path}")
     
-    # Converte i waypoints in coordinate pixel e li disegna sulla mappa
+    # Convert waypoints to pixel coordinates and draw them on the map
     for waypoint in waypoints:
         x_map, y_map = waypoint
         y_pixel, x_pixel = transformer.map_to_pixel(x_map, y_map)
         
-        # Disegna ogni waypoint come cerchio sulla mappa
-        cv2.circle(original_map, (x_pixel, y_pixel), 6, 0, -1)  # Cerchio nero per waypoint
+        # Draw each waypoint as a circle on the map
+        cv2.circle(original_map, (x_pixel, y_pixel), 6, 0, -1)  # Black circle for waypoint
 
-    # Salva la mappa con i waypoints in formato PNG
+    # Save the map with waypoints in PNG format
     cv2.imwrite(output_map_path_png, original_map)
-    print(f"Mappa con waypoints salvata in {output_map_path_png}")
+    print(f"Map with waypoints saved at {output_map_path_png}")
 
-    # Salva la mappa con i waypoints in formato PGM
+    # Save the map with waypoints in PGM format
     Image.fromarray(original_map).save(output_map_path_pgm, format="PPM")
-    print(f"Mappa con waypoints salvata in {output_map_path_pgm}")
+    print(f"Map with waypoints saved at {output_map_path_pgm}")
 
 
-# --- Funzione principale ---
+# --- Main function ---
 def process_map(image_path):
     """
-    Coordina tutti i passaggi necessari per processare la mappa e generare i file finali.
+    Coordinates all steps necessary to process the map and generate final files.
 
     Parameters:
-        image_path (str): Il percorso dell'immagine della mappa da processare.
+        image_path (str): Path to the map image to process.
     """
     config = Config()
-    # Estrae il nome della mappa dall'immagine
+    # Extracts the map name from the image
     map_name = os.path.splitext(os.path.basename(image_path))[0]
 
-    # Crea una cartella per questa mappa
+    # Create a folder for this map
     map_directory = create_map_directory(map_name + "_topological")
 
-    # Passo 1: Carica e pulisce la mappa di occupazione
+    # Step 1: Load and clean the occupancy map
     occupancy_grid = load_map(image_path)
-    image_height = occupancy_grid.shape[0]  # Calcola l'altezza dell'immagine in pixel
+    image_height = occupancy_grid.shape[0]  # Calculates the image height in pixels
 
-    # Crea un oggetto CoordinateTransformer
+    # Create a CoordinateTransformer object
     transformer = CoordinateTransformer(image_height, config.resolution, config.origin)
 
-    cleaned_map = clean_map(occupancy_grid)  # Applica la pulizia della mappa
+    cleaned_map = clean_map(occupancy_grid)  # Applies map cleaning
     save_as_png(cleaned_map, os.path.join(map_directory, f"{map_name}_cleaned_map.png"))
 
-    # Passo 2: Crea la mappa binaria
-    binary_map = create_binary_map(cleaned_map)  # Usa la mappa pulita come input
+    # Step 2: Create the binary map
+    binary_map = create_binary_map(cleaned_map)  # Uses the cleaned map as input
     save_as_png(binary_map, os.path.join(map_directory, f"{map_name}_binary_map.png"))
 
-    # Passo 3: Calcola la mappa delle distanze euclidee
+    # Step 3: Calculate the Euclidean distance map
     distance_map = compute_distance_map(binary_map)
-    # Normalizza la mappa delle distanze per la visualizzazione
+    # Normalize the distance map for visualization
     distance_map_normalized = (distance_map / np.max(distance_map) * 255).astype(np.uint8)
-    # Salva la mappa delle distanze normalizzata
+    # Save the normalized distance map
     save_as_png(distance_map_normalized, os.path.join(map_directory, f"{map_name}_distance_map.png"))
 
-    # Passo 4: Crea le linee di Voronoi
+    # Step 4: Create the Voronoi lines
     voronoi_map = create_voronoi_lines(distance_map)
-    # Salva la mappa di Voronoi
+    # Save the Voronoi map
     save_as_png(voronoi_map, os.path.join(map_directory, f"{map_name}_voronoi_map.png"))
 
-    # Passo 5: Scheletrizza le linee di Voronoi
+    # Step 5: Skeletonize the Voronoi lines
     voronoi_skeleton = skeletonize_voronoi(voronoi_map)
-    # Salva lo scheletro di Voronoi
+    # Save the Voronoi skeleton
     save_as_png(voronoi_skeleton, os.path.join(map_directory, f"{map_name}_skeleton_voronoi.png"))
 
-    # Passo 6: Creazione del grafo topologico utilizzando lo scheletro
+    # Step 6: Create the topological graph using the skeleton
     topo_map = create_topological_graph_using_skeleton(
         voronoi_skeleton,
         merge_threshold=config.merge_threshold,
@@ -570,67 +570,62 @@ def process_map(image_path):
         image_height=image_height
     )
 
-    # Converte i nodi in waypoints
+    # Convert nodes to waypoints
     waypoints = convert_nodes_to_waypoints(topo_map, transformer)
-    # Salva la mappa originale con i waypoints in formato PNG e PGM
+    # Save the original map with waypoints in PNG and PGM format
     output_map_with_waypoints_png = os.path.join(map_directory, f"{map_name}_with_waypoints.png")
     output_map_with_waypoints_pgm = os.path.join(map_directory, f"{map_name}_with_waypoints.pgm")
     add_waypoints_to_original_map(image_path, waypoints, output_map_with_waypoints_png, output_map_with_waypoints_pgm, transformer)
 
 
-
-    # Passo 7: Salva il grafo topologico come JSON
+    # Step 7: Save the topological graph as JSON
     save_graph_as_json(topo_map, os.path.join(map_directory, f"{map_name}_topological_graph.json"), transformer)
 
-    # Salva la trasformazione pixel-mappa in un file txt
+    # Save the pixel-to-map transformation in a text file
     save_pixel_to_map_transformations(
         topo_map,
         os.path.join(map_directory, f"{map_name}_pixel_to_map_transformations.txt"),
         transformer
     )
 
-    # Passo 8: Salva la mappa scheletrizzata con i nodi
+    # Step 8: Save the skeletonized map with nodes
     save_topological_map_with_nodes(
         voronoi_skeleton,
         topo_map,
-        os.path.join(map_directory, f"{map_name}_topologica_scheletro_nodi.pgm"),
+        os.path.join(map_directory, f"{map_name}_topological_skeleton_nodes.pgm"),
         transformer
     )
-
-
 
 # ### UBUNTU VERSION
 # if __name__ == "__main__":
 
-#     # Percorso di default per la mappa
+#     # Default path for the map
 #     default_image_path = "/home/beniamino/turtlebot4/diem_turtlebot_ws/src/map/diem_map.pgm"
 
-#     # Crea il parser degli argomenti
-#     parser = argparse.ArgumentParser(description="Generazione di una mappa topologica da una mappa di occupazione.")
+#     # Create argument parser
+#     parser = argparse.ArgumentParser(description="Generate a topological map from an occupancy map.")
 #     parser.add_argument('image_path', type=str, nargs='?', default=default_image_path,
-#                         help="Percorso dell'immagine della mappa da processare (predefinito: diem_turtlebot_ws/src/map/diem_map.pgm)")
+#                         help="Path to the map image to process (default: diem_turtlebot_ws/src/map/diem_map.pgm)")
 
-#     # Parsea gli argomenti
+#     # Parse arguments
 #     args = parser.parse_args()
 
-#     # Esegue il processo sulla mappa specificata
+#     # Process the specified map
 #     process_map(args.image_path)
-
-
 
 #### WINDOWS  VERSION
 
 if __name__ == "__main__":
-    # Percorso di default per la mappa, con doppie backslash per Windows
+    # Default path for the map, with double backslashes for Windows
     default_image_path = os.path.join("..", "diem_map.pgm")
 
-    # Crea il parser degli argomenti
-    parser = argparse.ArgumentParser(description="Generazione di una mappa topologica da una mappa di occupazione.")
+    # Create argument parser
+    parser = argparse.ArgumentParser(description="Generate a topological map from an occupancy map.")
     parser.add_argument('image_path', type=str, nargs='?', default=default_image_path,
-                        help="Percorso dell'immagine della mappa da processare (predefinito: diem_turtlebot_ws/src/map/diem_map.pgm)")
+                        help="Path to the map image to process (default: diem_turtlebot_ws/src/map/diem_map.pgm)")
 
-    # Parsea gli argomenti
+    # Parse arguments
     args = parser.parse_args()
 
-    # Esegue il processo sulla mappa specificata
+    # Process the specified map
     process_map(args.image_path)

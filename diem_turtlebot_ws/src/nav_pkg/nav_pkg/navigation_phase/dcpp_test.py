@@ -6,25 +6,25 @@ import os
 
 def load_graph(graph_file_path):
     """
-    Carica il grafo da un file JSON e costruisce un DiGraph di NetworkX.
+    Loads a graph from a JSON file and constructs a NetworkX DiGraph.
 
     Args:
-        graph_file_path (str): Percorso al file JSON contenente la struttura del grafo.
+        graph_file_path (str): Path to the JSON file containing the graph structure.
 
     Returns:
-        networkx.DiGraph: Il grafo diretto con pesi sugli archi.
+        networkx.DiGraph: A directed graph with weighted edges.
     """
     with open(graph_file_path, 'r') as f:
         data = json.load(f)
 
-    # Crea un grafo diretto utilizzando NetworkX
+    # Create a directed graph using NetworkX
     G = nx.DiGraph()
 
-    # Aggiungi i nodi con le loro coordinate come attributi
+    # Add nodes with coordinates as attributes
     for node in data['nodes']:
         G.add_node(node['label'], x=node['x'], y=node['y'])
 
-    # Aggiungi gli archi con peso calcolato in base alla distanza euclidea
+    # Add edges with weights calculated based on Euclidean distance
     for edge in data['edges']:
         u, v = edge['from'], edge['to']
         x1, y1 = G.nodes[u]['x'], G.nodes[u]['y']
@@ -36,19 +36,19 @@ def load_graph(graph_file_path):
 
 def compute_dcpp_route(G):
     """
-    Calcola il percorso DCPP per il grafo diretto G fornito.
+    Computes the Directed Chinese Postman Problem (DCPP) route for the provided directed graph G.
 
     Args:
-        G (networkx.DiGraph): Il grafo diretto su cui calcolare il percorso DCPP.
+        G (networkx.DiGraph): The directed graph for which to calculate the DCPP route.
 
     Returns:
-        list: Il percorso DCPP come lista di archi (u, v).
+        list: The DCPP route as a list of edges (u, v).
     """
     if not nx.is_strongly_connected(G):
-        print("Errore: Il grafo non è fortemente connesso.")
+        print("Error: The graph is not strongly connected.")
         return None
 
-    # Bilanciamento dei nodi sbilanciati
+    # Balancing unbalanced nodes
     imbalances = {v: G.out_degree(v) - G.in_degree(v) for v in G.nodes()}
     positive_nodes = [v for v, imbalance in imbalances.items() if imbalance > 0]
     negative_nodes = [v for v, imbalance in imbalances.items() if imbalance < 0]
@@ -90,34 +90,34 @@ def compute_dcpp_route(G):
         circuit = list(nx.eulerian_circuit(G))
         return circuit
     else:
-        print("Errore: Impossibile bilanciare il grafo per renderlo Euleriano.")
+        print("Error: Unable to balance the graph to make it Eulerian.")
         return None
 
 def print_route(route, G, start_node_label):
     """
-    Stampa i nodi e le direzioni attraversati nel percorso DCPP.
+    Prints the nodes and directions traversed in the DCPP route.
 
     Args:
-        route (list): Lista di coppie di nodi (u, v) che rappresentano il percorso DCPP.
-        G (networkx.DiGraph): Grafo contenente i nodi e le loro coordinate.
-        start_node_label (str): Nodo di partenza per il percorso.
+        route (list): List of node pairs (u, v) representing the DCPP route.
+        G (networkx.DiGraph): Graph containing the nodes and their coordinates.
+        start_node_label (str): Starting node for the route.
     """
-    # Riordina il circuito per iniziare dal nodo di partenza
+    # Reorder the circuit to start from the specified starting node
     reordered_route = reorder_route(route, start_node_label)
 
     for u, v in reordered_route:
-        print(f"Da {u} a {v}")
+        print(f"From {u} to {v}")
 
 def reorder_route(route, start_node_label):
     """
-    Riordina il percorso DCPP per iniziare dal nodo di partenza specificato.
+    Reorders the DCPP route to start from the specified starting node.
 
     Args:
-        route (list): Lista di coppie di nodi (u, v) che rappresentano il percorso DCPP.
-        start_node_label (str): Nodo di partenza desiderato.
+        route (list): List of node pairs (u, v) representing the DCPP route.
+        start_node_label (str): Desired starting node.
 
     Returns:
-        list: Percorso riordinato per iniziare dal nodo specificato.
+        list: Reordered route starting from the specified node.
     """
     for i, (u, v) in enumerate(route):
         if u == start_node_label:
@@ -125,28 +125,28 @@ def reorder_route(route, start_node_label):
     return route
 
 def main():
-    # Parsing degli argomenti della riga di comando per il nodo di partenza
-    parser = argparse.ArgumentParser(description="Navigazione DCPP in un grafo.")
-    parser.add_argument('--start_node', type=str, required=True, help="Nodo di partenza (es. 'node_1')")
+    # Command line argument parsing for the start node
+    parser = argparse.ArgumentParser(description="DCPP Navigation on a Graph.")
+    parser.add_argument('--start_node', type=str, required=True, help="Starting node (e.g., 'node_1')")
     args = parser.parse_args()
     start_node_label = args.start_node
 
-    # Percorso al file JSON del grafo
+    # Path to the graph JSON file
     script_path = os.path.dirname(os.path.abspath(__file__))
     graph_path = os.path.join(script_path, '/home/beniamino/turtlebot4/diem_turtlebot_ws/src/map/map_transformation_phase/graph/navigation_graph_simplified.json')
 
-    # Carica il grafo dal file JSON
+    # Load the graph from the JSON file
     G = load_graph(graph_path)
 
-    # Calcola il percorso DCPP per il grafo
+    # Compute the DCPP route for the graph
     route = compute_dcpp_route(G)
 
-    # Se il percorso è stato calcolato, stampalo
+    # If the route was computed, print it
     if route:
-        print("\nPercorso DCPP (nodo e direzione):")
+        print("\nDCPP Route (node and direction):")
         print_route(route, G, start_node_label)
     else:
-        print("Non è stato possibile calcolare il percorso DCPP.")
+        print("Unable to compute the DCPP route.")
 
 if __name__ == "__main__":
     main()

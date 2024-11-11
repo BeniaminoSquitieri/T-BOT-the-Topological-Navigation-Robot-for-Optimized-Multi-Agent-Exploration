@@ -10,17 +10,17 @@ class WaypointPublisher(Node):
         self.publisher_ = self.create_publisher(MarkerArray, '/waypoints', 10)
         self.json_path = json_path
         self.marker_array = self.create_marker_array()
-        self.timer = self.create_timer(1.0, self.publish_markers)  # Pubblica ogni secondo
+        self.timer = self.create_timer(1.0, self.publish_markers)  # Publish every second
 
     def create_marker_array(self):
         marker_array = MarkerArray()
-        # Carica i waypoints dal file JSON
+        # Load waypoints from the JSON file
         with open(self.json_path, 'r') as f:
             data = json.load(f)
 
         for idx, node in enumerate(data["nodes"]):
             marker = Marker()
-            marker.header.frame_id = "map"  # Assicurati che il frame sia "map" per RViz
+            marker.header.frame_id = "map"  # Ensure the frame is "map" for RViz
             marker.header.stamp = self.get_clock().now().to_msg()
             marker.ns = "waypoints"
             marker.id = idx
@@ -28,15 +28,15 @@ class WaypointPublisher(Node):
             marker.action = Marker.ADD
             marker.pose.position.x = node["x"]
             marker.pose.position.y = node["y"]
-            marker.pose.position.z = 0.0  # Mantieni i marker sul piano 2D
-            marker.pose.orientation.w = 1.0  # Nessuna rotazione
-            marker.scale.x = 0.5  # Dimensioni del marker
+            marker.pose.position.z = 0.0  # Keep markers on the 2D plane
+            marker.pose.orientation.w = 1.0  # No rotation
+            marker.scale.x = 0.5  # Marker size
             marker.scale.y = 0.5
             marker.scale.z = 0.0
-            marker.color.a = 1.0  # Opacità del marker
-            marker.color.r = 1.0  # Rosso a 0
-            marker.color.g = 0.0  # Verde a 1
-            marker.color.b = 0.0  # Blu a 0
+            marker.color.a = 1.0  # Marker opacity
+            marker.color.r = 1.0  # Red color channel
+            marker.color.g = 0.0  # Green color channel
+            marker.color.b = 0.0  # Blue color channel
 
             marker_array.markers.append(marker)
 

@@ -1,67 +1,67 @@
 # PHASE 1
 
-# Generazione di una Mappa Topologica da una Mappa di Occupazione
+# Generating a Topological Map from an Occupancy Map
 
-## Introduzione
-Questo modulo ha l'obiettivo di trasformare una mappa di occupazione (occupancy grid map) in una mappa topologica. Questa rappresentazione è ideale per applicazioni di robotica, come la navigazione autonoma e la pianificazione dei percorsi in ambienti interni complessi, consentendo al robot di comprendere le relazioni spaziali tra punti chiave dell'ambiente.
+## Introduction
+This module aims to transform an occupancy grid map into a topological map. This representation is particularly well-suited for robotics applications, such as autonomous navigation and path planning in complex indoor environments, allowing a robot to understand the spatial relationships between key points in the environment.
 
-## Descrizione Generale
-Il processo di generazione della mappa topologica si articola nei seguenti passaggi:
+## General Description
+The process of generating the topological map involves the following steps:
 
-1. **Caricamento della Mappa di Occupazione**: Carica l'immagine della mappa.
-2. **Creazione della Mappa Binaria**: Trasforma l'immagine in una rappresentazione binaria (ostacoli/spazi liberi).
-3. **Calcolo della Mappa delle Distanze Euclidee**: Determina la distanza minima di ciascun punto dagli ostacoli.
-4. **Generazione delle Linee di Voronoi**: Identifica i percorsi equidistanti dagli ostacoli.
-5. **Scheletrizzazione delle Linee di Voronoi**: Riduce le linee a una rappresentazione di un pixel di larghezza.
-6. **Creazione del Grafo Topologico**: Costruisce il grafo a partire dallo scheletro, con nodi e archi.
-7. **Salvataggio dei Risultati**: Esporta immagini e file di configurazione per l'uso con ROS2.
+1. **Loading the Occupancy Map**: Load the map image.
+2. **Creating the Binary Map**: Convert the image into a binary representation (obstacles/free spaces).
+3. **Calculating the Euclidean Distance Map**: Determine the minimum distance of each point from obstacles.
+4. **Generating Voronoi Lines**: Identify paths equidistant from obstacles.
+5. **Skeletonizing Voronoi Lines**: Reduce the lines to a one-pixel-wide representation.
+6. **Creating the Topological Graph**: Construct the graph from the skeleton, with nodes and edges.
+7. **Saving Results**: Export images and configuration files for use with ROS2.
 
-## Passaggi Dettagliati
+## Detailed Steps
 
-### 1. Caricamento della Mappa di Occupazione
-- **Obiettivo**: Caricare l'immagine della mappa in scala di grigi.
-- **Metodo**: Utilizza OpenCV per leggere l'immagine e ottenere una matrice rappresentante i livelli di occupazione.
+### 1. Loading the Occupancy Map
+- **Objective**: Load the grayscale map image.
+- **Method**: Use OpenCV to read the image and obtain a matrix representing occupancy levels.
 
-### 2. Creazione della Mappa Binaria
-- **Obiettivo**: Convertire l'immagine in una mappa binaria dove:
-  - 0 (nero): rappresenta gli ostacoli.
-  - 1 (bianco): rappresenta gli spazi liberi.
-- **Motivazione**: Una rappresentazione binaria facilita il calcolo delle distanze e la generazione delle linee di Voronoi.
+### 2. Creating the Binary Map
+- **Objective**: Convert the image into a binary map where:
+  - 0 (black): represents obstacles.
+  - 1 (white): represents free space.
+- **Motivation**: A binary representation makes it easier to calculate distances and generate Voronoi lines.
 
-### 3. Calcolo della Mappa delle Distanze Euclidee
-- **Obiettivo**: Calcolare, per ogni pixel libero, la distanza minima dall'ostacolo più vicino.
-- **Motivazione**: La mappa delle distanze è fondamentale per generare le linee di Voronoi, che rappresentano i luoghi equidistanti dagli ostacoli.
+### 3. Calculating the Euclidean Distance Map
+- **Objective**: Calculate the minimum distance from each free pixel to the nearest obstacle.
+- **Motivation**: The distance map is fundamental for generating Voronoi lines, which represent locations equidistant from obstacles.
 
-### 4. Generazione delle Linee di Voronoi
-- **Obiettivo**: Identificare i percorsi equidistanti dagli ostacoli, noti come linee di Voronoi.
-- **Metodo**:
-  - Applica un filtro per calcolare la differenza tra i valori di distanza dei pixel adiacenti.
-  - I punti con differenze significative indicano posizioni equidistanti da più ostacoli.
-- **Motivazione**: Le linee di Voronoi rappresentano i percorsi centrali, ideali per la navigazione robotica.
+### 4. Generating Voronoi Lines
+- **Objective**: Identify paths that are equidistant from obstacles, known as Voronoi lines.
+- **Method**:
+  - Apply a filter to calculate the difference between distance values of neighboring pixels.
+  - Points with significant differences indicate locations equidistant from multiple obstacles.
+- **Motivation**: Voronoi lines represent central paths, ideal for robotic navigation.
 
-### 5. Scheletrizzazione delle Linee di Voronoi
-- **Obiettivo**: Ridurre le linee di Voronoi a linee sottili di un pixel di larghezza.
-- **Motivazione**: La scheletrizzazione facilita l'identificazione dei nodi e migliora l'accuratezza della costruzione del grafo topologico.
+### 5. Skeletonizing Voronoi Lines
+- **Objective**: Reduce Voronoi lines to thin, one-pixel-wide lines.
+- **Motivation**: Skeletonization helps in identifying nodes and improves the accuracy of topological graph construction.
 
-### 6. Creazione del Grafo Topologico
-- **Obiettivo**: Costruire un grafo che rappresenta la mappa, composto da nodi e archi.
-- **Passaggi**:
-  1. **Identificazione dei Nodi**: Riconosce i nodi come punti di incrocio e estremità sullo scheletro.
-  2. **Distribuzione dei Nodi**: Utilizza l'algoritmo di clustering DBSCAN per distribuire uniformemente i nodi. 
-     - **DBSCAN (Density-Based Spatial Clustering of Applications with Noise)** è un algoritmo di clustering che raggruppa punti vicini in base alla densità dei dati. I punti vengono raggruppati se si trovano entro una certa distanza (parametro `eps`) e se hanno almeno un numero minimo di punti vicini (`min_samples`). Questo metodo è particolarmente utile in scenari dove ci sono zone di alta densità di punti che rappresentano nodi molto vicini tra loro, che possono essere fusi in un unico cluster. 
+### 6. Creating the Topological Graph
+- **Objective**: Construct a graph representing the map, composed of nodes and edges.
+- **Steps**:
+  1. **Node Identification**: Identify nodes as intersections and endpoints on the skeleton.
+  2. **Node Distribution**: Use the DBSCAN clustering algorithm to distribute nodes evenly.
+     - **DBSCAN (Density-Based Spatial Clustering of Applications with Noise)** clusters nearby points based on density. Points are grouped if they are within a certain distance (`eps`) and have a minimum number of neighboring points (`min_samples`). This method is especially useful in areas with high density of nodes that can be merged into a single cluster.
 
-### 7. Salvataggio dei Risultati
-- **Immagini Salvate**:
-  - Mappa binaria
-  - Mappa delle distanze normalizzata
-  - Mappa di Voronoi
-  - Scheletro di Voronoi
-  - Mappa con i nodi sovrapposti
+### 7. Saving Results
+- **Saved Images**:
+  - Binary Map
+  - Normalized Distance Map
+  - Voronoi Map
+  - Voronoi Skeleton
+  - Map with Nodes Overlaid
 
-## Requisiti
+## Requirements
 
-### Librerie Python Necessarie
-Le seguenti librerie Python sono richieste per eseguire il modulo:
+### Required Python Libraries
+The following Python libraries are required to run this module:
 
 - `numpy`
 - `opencv-python`
@@ -71,130 +71,130 @@ Le seguenti librerie Python sono richieste per eseguire il modulo:
 - `Pillow`
 - `PyYAML`
 
-### Ambiente di Esecuzione
+### Execution Environment
 - Python 3.x
-- ROS2 Humble (se si vuole utilizzare la mappa con il sistema ROS2)
+- ROS2 Humble (for using the map with ROS2)
 
-## Guida all'Utilizzo
+## Usage Guide
 
-### Installazione delle Dipendenze
-Esegui il seguente comando per installare tutte le librerie necessarie:
+### Installing Dependencies
+Run the following command to install all required libraries:
 ```bash
 pip install numpy opencv-python networkx scipy scikit-image Pillow PyYAML
 ```
-### Esecuzione dello Script
-Per eseguire lo script, assicurati di specificare il percorso dell'immagine della mappa.
+### Running the Script
+To execute the script, make sure to specify the path of the map image.
 ```bash
-python topological_map.py diem_map.pgm 
+python topological_map.py diem_map.pgm
 ```
 
-# Visualizzazione dei Risultati in RVIZ
+# Viewing Results in RVIZ
 
-Dopo aver generato la mappa, puoi visualizzarla in RVIZ per verificarne l'accuratezza. Segui i passaggi riportati di seguito.
+After generating the map, you can visualize it in RVIZ to verify its accuracy. Follow the steps below.
 
-## Passaggi per Visualizzare la Mappa
+## Steps to View the Map
 
-1. **Assicurati di aver copiato o specificato il percorso corretto della mappa YAML generata.**
+1. **Ensure you have copied or specified the correct path to the generated YAML map.**
 
-2. **Esegui i seguenti comandi in tre diverse shell per lanciare i moduli necessari alla visualizzazione e navigazione della mappa.**
+2. **Run the following commands in three different terminals to launch the modules required for map visualization and navigation.**
 
-3. **Non dimenticarti di andare nella directory della mappa** 
-- /turtlebot4/diem_turtlebot_ws/src/map/map_transformation_phase/diem_map_topological
-### Shell 1 - Avvia la Localizzazione Utilizzando la Mappa
+3. **Don't forget to navigate to the map directory**:
+- `/turtlebot4/diem_turtlebot_ws/src/map/map_transformation_phase/diem_map_topological`
+### Terminal 1 - Start Localization Using the Map
 ```bash
 ros2 launch turtlebot4_navigation localization.launch.py map:=<map_yaml_file_path>
 ```
-Nel mio caso: 
+In my case:
 
 ```bash
 ros2 launch turtlebot4_navigation localization.launch.py map:=/home/beniamino/turtlebot4/diem_turtlebot_ws/src/map/diem_map.yaml
-
 ```
 
-### Shell 2 - Avvia il Modulo di Navigazione
+### Terminal 2 - Start the Navigation Module
 ```bash
 ros2 launch turtlebot4_navigation nav2.launch.py
 ```
-### Shell 3 - Avvia RVIZ per la Visualizzazione del Robot
+### Terminal 3 - Start RVIZ to Visualize the Robot
 ```bash
 ros2 launch turtlebot4_viz view_robot.launch.py
 ```
-> **Nota:** Sostituisci `<map_yaml_file_path>` con il percorso della mappa YAML generata.
+> **Note:** Replace `<map_yaml_file_path>` with the path to the generated YAML map.
 
-## Preparazione dell'Ambiente
+## Preparing the Environment
 
-- Assicurati che l'immagine della mappa di occupazione sia disponibile e accessibile.
-- Modifica il valore di `diem_map.pgm` nel comando con il percorso della tua mappa.
+- Ensure that the occupancy map image is available and accessible.
+- Modify the value of `diem_map.pgm` in the command with your map's path.
 
-## Configurazione dei Parametri
-- **image_path:** Specifica il percorso dell'immagine della mappa.
-- **max_nodes:** Specifica il numero massimo di nodi da includere nel grafo topologico. Se non impostato, verranno utilizzati tutti i nodi disponibili.
+## Parameter Configuration
+- **image_path**: Specify the path to the map image.
 
-## Output e Visualizzazione dei Risultati
+## Output and Visualization of Results
 
-Al termine dell'esecuzione, verrà creata una cartella con il nome della mappa che conterrà:
+Upon execution, a folder will be created with the name of the map, containing:
 
-### 1. Immagini Salvate
-- Mappa scheletrizzata
-- Mappa con i nodi sovrapposti
-- Mappa binaria
-- Mappa delle distanze normalizzata
-- Mappa di Voronoi
+### 1. Saved Images
+- Skeletonized Map
+- Map with Nodes Overlaid
+- Binary Map
+- Normalized Distance Map
+- Voronoi Map
 
-### 2. File YAML
-- Contiene informazioni come risoluzione e origine della mappa per l'integrazione con ROS2.
+### 2. YAML File
+- Contains information such as resolution and map origin for integration with ROS2.
 
-### 3. Rappresentazione del Grafo Topologico
-- Formato JSON con la struttura del grafo topologico.
+### 3. Topological Graph Representation
+- JSON format with the structure of the topological graph.
+
 # PHASE 2
 
-## File di Visualizzazione del Grafo
+## Graph Visualization File
 
-Il file `visualize_graph.py` consente di visualizzare il grafo topologico generato sovrapponendolo a un'immagine di mappa di sfondo e di salvare il risultato sia in formato PNG che PGM.
+The `visualize_graph.py` file allows you to visualize the generated topological graph by overlaying it on a background map image and saving the result in both PNG and PGM formats.
 
-### Requisiti
+### Requirements
 
 - `matplotlib`
 - `networkx`
 - `Pillow`
 - `numpy`
 
-Assicurati di aver installato queste librerie utilizzando il seguente comando:
+Make sure to install these libraries using the following command:
 
 ```bash
 pip install matplotlib networkx pillow numpy
 ```
 
-### Guida all'Utilizzo
+### Usage Guide
 
-Per visualizzare il grafo topologico, esegui il seguente comando passando il percorso del file JSON generato:
+To visualize the topological graph, run the following command, passing the path to the generated JSON file:
 
 ```bash
 python visualize_graph.py <path_to_json>
 ```
 
-### Descrizione del File `visualize_graph.py`
+### Description of `visualize_graph.py`
 
 - **Input**:
-  - Un file JSON contenente la descrizione del grafo topologico (nodi e archi) con coordinate basate sul sistema RVIZ.
-  - Il percorso dell'immagine `diem_map.pgm` utilizzata come sfondo della mappa.
-- **Output**: Due file immagine del grafo topologico sovrapposto alla mappa, salvati nella directory `graph`:
-  - Un file PNG per la visualizzazione.
-  - Un file PGM per l'utilizzo con strumenti che richiedono formati di immagine compatibili con ROS.
+  - A JSON file containing the description of the topological graph (nodes and edges) with coordinates based on the RVIZ system.
+  - The path to the `diem_map.pgm` image used as the background map.
+- **Output**: Two image files of the topological graph overlaid on the map, saved in the `graph` directory:
+  - A PNG file for visualization.
+  - A PGM file for use with tools that require image formats compatible with ROS.
   
-- **Funzionalità**:
-  - Converte le coordinate del grafo da RVIZ a coordinate pixel, utilizzando i valori di `origin` e `resolution` specificati nella configurazione YAML della mappa.
-  - Disegna il grafo topologico utilizzando `matplotlib` e `networkx` sopra l'immagine della mappa.
-  - Salva l'immagine del grafo sovrapposto in formato PNG e PGM nella cartella `graph`.
+- **Functionality**:
+  - Converts graph coordinates from RVIZ to pixel coordinates, using the `origin` and `resolution` values specified in the map's YAML configuration.
+  - Draws the topological graph using `matplotlib` and `networkx` on top of the map image.
+  - Saves the overlaid graph image in PNG and PGM formats in the `graph` folder.
 
-### Esempio di Utilizzo
+### Example Usage
 
-Supponiamo di aver generato un file JSON chiamato `navigation_graph.json`. Per visualizzare e sovrapporre il grafo alla mappa come immagine:
+Suppose you have generated a JSON file named `navigation_graph.json`. To visualize and overlay the graph on the map as an image:
 
 ```bash
 python visualize_graph.py navigation_graph.json
 ```
 
-Dopo l'esecuzione, verranno create due immagini nella cartella `graph`:
-- `navigation_graph_graph_map.png`: la sovrapposizione del grafo alla mappa in formato PNG.
-- `navigation_graph_graph_map.pgm`: la sovrapposizione del grafo alla mappa in formato PGM, utile per il caricamento in ROS.
+After execution, two images will be created in the `graph` folder:
+- `navigation_graph_graph_map.png`: the graph overlaid on the map in PNG format.
+- `navigation_graph_graph_map.pgm`: the graph overlaid on the map in PGM format, useful for loading in ROS2.
+

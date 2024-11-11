@@ -6,26 +6,26 @@ import sys
 from PIL import Image
 import numpy as np
 
-# Valori della mappa forniti direttamente (corrispondenti al file diem_map.yaml)
-resolution = 0.05  # metri per pixel
-origin = (-32.507755, -27.073547)  # coordinate di origine (x, y) della mappa
-image_path = "/home/beniamino/turtlebot4_tesi/diem_turtlebot_ws/src/map/diem_map.pgm"  # percorso completo dell'immagine della mappa
+# Map values provided directly (corresponding to diem_map.yaml file)
+resolution = 0.05  # meters per pixel
+origin = (-32.507755, -27.073547)  # origin coordinates (x, y) of the map
+image_path = "/home/beniamino/turtlebot4_tesi/diem_turtlebot_ws/src/map/diem_map.pgm"  # full path to the map image
 
 def map_to_pixel(x_map, y_map, origin, resolution, image_height):
     """
-    Converte le coordinate mappa RVIZ in coordinate pixel.
+    Converts RVIZ map coordinates to pixel coordinates.
     
     Parameters:
-        x_map, y_map (float): Coordinate mappa RVIZ.
-        origin (tuple): Coordinate di origine della mappa nel frame RVIZ.
-        resolution (float): Risoluzione della mappa (metri per pixel).
-        image_height (int): Altezza dell'immagine della mappa in pixel.
+        x_map, y_map (float): RVIZ map coordinates.
+        origin (tuple): Origin coordinates of the map in RVIZ frame.
+        resolution (float): Map resolution (meters per pixel).
+        image_height (int): Map image height in pixels.
         
     Returns:
-        (int, int): Coordinate pixel.
+        (int, int): Pixel coordinates.
     """
     x_pixel = int((x_map - origin[0]) / resolution)
-    y_pixel = image_height - int((y_map - origin[1]) / resolution)  # Inverti per adattare la mappa
+    y_pixel = image_height - int((y_map - origin[1]) / resolution)  # Invert for map alignment
     return x_pixel, y_pixel
 
 # Check if JSON file path is passed as an argument
@@ -70,7 +70,7 @@ output_pgm_path = os.path.join(output_directory, f"{json_file_name}_graph_map.pg
 plt.figure(figsize=(12, 8))
 plt.imshow(image_array, cmap="gray")  # Display the original map as background
 nx.draw(
-    G, pos=node_positions_pixel, with_labels=True, node_size=10, node_color="black",  # Ridotta la dimensione e cambiato il colore dei nodi a nero
+    G, pos=node_positions_pixel, with_labels=True, node_size=10, node_color="black",  # Reduced size and changed node color to black
     font_size=8, font_weight="bold", edge_color="blue", linewidths=0.5
 )
 
