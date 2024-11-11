@@ -272,21 +272,21 @@ def main(args=None):
     """
     Funzione principale per inizializzare ed eseguire il nodo di navigazione.
     """
-    rclpy.init(args=args)  # Inizializza la libreria ROS2 Python
+    rclpy.init(args=args)  
 
     # Parsing degli argomenti da linea di comando per ottenere le coordinate di partenza
     parser = argparse.ArgumentParser(description='Nodo di Navigazione utilizzando DCPP')
-    parser.add_argument('--x', type=float, required=True, help='Coordinata x di partenza')
-    parser.add_argument('--y', type=float, required=True, help='Coordinata y di partenza')
+    parser.add_argument('--start_x', type=float, required=True, help='Coordinata x di partenza')
+    parser.add_argument('--start_y', type=float, required=True, help='Coordinata y di partenza')
     args = parser.parse_args()
 
-    starting_point = {'x': args.x, 'y': args.y}  # Crea un dizionario per il punto di partenza
+    starting_point = {'x': args.start_x, 'y': args.start_y}  # Crea un dizionario per il punto di partenza
 
     # Ottiene il percorso assoluto della directory corrente dello script
     script_path = os.path.dirname(os.path.abspath(__file__))
 
     # Percorso al file JSON del grafo
-    graph_path = os.path.join(script_path, 'navigation_graph_simplified.json')
+    graph_path = os.path.join(script_path, '/home/beniamino/turtlebot4/diem_turtlebot_ws/src/map/map_transformation_phase/graph/navigation_graph_simplified.json')
 
     # Crea un'istanza del nodo di navigazione con il percorso del grafo e il punto di partenza
     navigation_node = NavigationNode(graph_path, starting_point)

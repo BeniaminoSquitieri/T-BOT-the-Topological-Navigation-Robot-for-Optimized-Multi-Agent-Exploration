@@ -25,6 +25,9 @@
         { "from": "node_5", "to": "node_10", "direction": "NORTH" },
         { "from": "node_10", "to": "node_5", "direction": "SOUTH" },
 
+        { "from": "node_5", "to": "node_15", "direction": "WEST" },
+        { "from": "node_15", "to": "node_5", "direction": "EAST" },
+
         { "from": "node_10", "to": "node_16", "direction": "WEST" },
         { "from": "node_16", "to": "node_10", "direction": "EAST" },
 
@@ -33,6 +36,9 @@
         
         { "from": "node_13", "to": "node_8", "direction": "SOUTH" },
         { "from": "node_8", "to": "node_13", "direction": "NORTH" },
+
+        { "from": "node_17", "to": "node_8", "direction": "EAST" },
+        { "from": "node_8", "to": "node_17", "direction": "WEST" },
 
         { "from": "node_17", "to": "node_16", "direction": "SOUTH" },
         { "from": "node_16", "to": "node_17", "direction": "NORTH" },

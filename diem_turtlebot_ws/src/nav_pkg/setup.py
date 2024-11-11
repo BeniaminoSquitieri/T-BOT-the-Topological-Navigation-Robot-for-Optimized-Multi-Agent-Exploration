@@ -25,6 +25,7 @@ setup(
             "obj_avoidance = nav_pkg.obstacle_avoidance:main",
             "odom = nav_pkg.odom:main",
             "navigation = nav_pkg.navigation_phase.navigation:main",
+            "publish_waypoints = nav_pkg.navigation_phase.publish_waypoints:main",
         ],
     },
 )

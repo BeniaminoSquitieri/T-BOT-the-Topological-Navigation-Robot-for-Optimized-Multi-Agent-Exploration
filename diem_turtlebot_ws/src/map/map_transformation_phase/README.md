@@ -107,7 +107,7 @@ ros2 launch turtlebot4_navigation localization.launch.py map:=<map_yaml_file_pat
 Nel mio caso: 
 
 ```bash
-ros2 launch turtlebot4_navigation localization.launch.py map:=/home/beniamino/turtlebot4/diem_turtlebot_ws/src/map/map_transformation_phase/diem_map_topological/diem_map_topologica_scheletro_nodi.yaml
+ros2 launch turtlebot4_navigation localization.launch.py map:=/home/beniamino/turtlebot4/diem_turtlebot_ws/src/map/diem_map.yaml
 
 ```
 
