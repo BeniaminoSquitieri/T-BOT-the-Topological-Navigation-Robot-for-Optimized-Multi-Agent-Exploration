@@ -107,7 +107,7 @@ ros2 launch turtlebot4_navigation localization.launch.py map:=<map_yaml_file_pat
 In my case:
 
 ```bash
-ros2 launch turtlebot4_navigation localization.launch.py map:=/home/beniamino/turtlebot4/diem_turtlebot_ws/src/map/diem_map.yaml
+ros2 launch turtlebot4_navigation localization.launch.py map:=diem_map.yaml
 ```
 
 ### Terminal 2 - Start the Navigation Module

@@ -9,7 +9,7 @@ import numpy as np
 # Map values provided directly (corresponding to diem_map.yaml file)
 resolution = 0.05  # meters per pixel
 origin = (-32.507755, -27.073547)  # origin coordinates (x, y) of the map
-image_path = "/home/beniamino/turtlebot4_tesi/diem_turtlebot_ws/src/map/diem_map.pgm"  # full path to the map image
+image_path = "/home/beniamino/turtlebot4/diem_turtlebot_ws/src/map/diem_map.pgm"  # full path to the map image
 
 def map_to_pixel(x_map, y_map, origin, resolution, image_height):
     """
@@ -42,6 +42,16 @@ with open(json_file_path, 'r') as file:
 image = Image.open(image_path).convert("L")
 image_array = np.array(image)
 image_height = image_array.shape[0]
+
+# #in the json file we have a dictionary with two keys and each key is characteruzed by a list whose each element is a pair (key, element)
+# print("Nodes in graph_data:")
+# for node in graph_data["nodes"]:
+#     print(f"Label: {node['label']}, X: {node['x']}, Y: {node['y']}")
+
+# print("\nEdges in graph_data:")
+# for edge in graph_data["edges"]:
+#     print(f"From: {edge['from']} -> To: {edge['to']}")
+
 
 # Convert each node's RVIZ coordinates to pixel coordinates
 node_positions_pixel = {}
