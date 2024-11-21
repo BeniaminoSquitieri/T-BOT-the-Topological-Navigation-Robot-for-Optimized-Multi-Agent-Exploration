@@ -67,7 +67,7 @@ def generate_launch_description():
 
             # Create a Node object for the robot's navigation node
             navigation_node = Node(
-                package='your_package_name',  # Replace with the name of your package
+                package='nav_pkg',  # Replace with the name of your package
                 executable='robot_navigation_node',  # Name of the executable (without .py)
                 namespace=robot_ns,  # Assign the namespace for the robot
                 name=robot_ns + '_navigation_node',  # Unique name for the node
@@ -96,7 +96,4 @@ def generate_launch_description():
     return ld
 
 # Example command to launch:
-# ros2 launch your_package_name multi_robot_navigation_launch.py \
-#     graph_path:=/path/to/your/graph/full_graph.json \
-#     robot_namespaces:=robot_1,robot_2,robot_3 \
-#     start_positions:=75.79224500000001:2.5764530000000008,-2.3077550000000002:-0.5235470000000007,-23.607755000000004:-0.22354699999999994
+# ros2 launch your_package_name multi_robot_navigation_launch.py graph_path:=/path/to/your/graph/full_graph.json robot_namespaces:=robot_1,robot_2,robot_3 start_positions:=75.79224500000001:2.5764530000000008,-2.3077550000000002:-0.5235470000000007,-23.607755000000004:-0.22354699999999994

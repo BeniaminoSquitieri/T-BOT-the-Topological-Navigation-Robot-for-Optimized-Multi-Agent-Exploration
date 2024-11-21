@@ -1,0 +1,16 @@
+<package format="2">
+  <name>multi_robot_pkg_navigation</name>
+  <version>0.0.0</version>
+  <description>Multi-robot navigation package</description>
+  <maintainer email="your_email@example.com">Your Name</maintainer>
+  <license>License declaration</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>rclpy</depend>
+  <depend>std_msgs</depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

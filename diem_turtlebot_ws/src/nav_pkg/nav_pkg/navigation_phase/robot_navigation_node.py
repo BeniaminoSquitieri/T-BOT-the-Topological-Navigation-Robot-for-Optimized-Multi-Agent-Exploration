@@ -50,7 +50,7 @@ class RobotNavigationNode(Node):
         self.num_robots = num_robots
 
         # Create an instance of the navigator for the robot, specifying the namespace
-        self.navigator = TurtleBot4Navigator(namespace='/' + self.robot_namespace)
+        self.navigator = TurtleBot4Navigator()
 
         # Load the full graph from the JSON file
         self.load_graph(graph_file_path)
@@ -385,40 +385,32 @@ class RobotNavigationNode(Node):
             node_label (str): Identifier of the node to navigate to.
         """
         # Get the coordinates of the target node from the graph
-        # The node's label serves as a key to access its stored x and y positions
         x, y = self.nx_graph.nodes[node_label]['x'], self.nx_graph.nodes[node_label]['y']
 
-        # Retrieve the current pose of the robot from the navigator
-        # This is used to calculate the orientation towards the target node
-        current_pose = self.navigator.getCurrentPose()
+        # Get the coordinates of the current node from the graph
+        current_node_label = self.current_node_label
+        x0, y0 = self.nx_graph.nodes[current_node_label]['x'], self.nx_graph.nodes[current_node_label]['y']
 
-        if current_pose:
-            # Extract the robot's current x and y coordinates
-            x0 = current_pose.pose.position.x
-            y0 = current_pose.pose.position.y
-            # Calculate the orientation (angle) from the current position to the target node
-            orientation = math.atan2(y - y0, x - x0)
-        else:
-            # If the current pose is unavailable, set a default orientation to 0 radians
-            orientation = 0.0
+        # Calculate the orientation towards the target node
+        orientation = math.atan2(y - y0, x - x0)
 
         # Create a goal pose for the robot
-        # This includes the target coordinates and the calculated orientation
         goal_pose = self.navigator.getPoseStamped([x, y], orientation)
 
         # Instruct the navigator to begin moving towards the goal pose
         self.navigator.startToPose(goal_pose)
-        # Log the navigation action, specifying the target node and its coordinates
         self.get_logger().info(f"[{self.robot_namespace}] Navigating to node {node_label} at ({x}, {y}).")
 
         # Wait until the navigation task is complete
-        # Continuously check the navigator's task status in a loop
         while not self.navigator.isTaskComplete():
-            time.sleep(0.5)  # Pause briefly to avoid excessive CPU usage in the loop
+            time.sleep(0.5)
+
+        # Update the current node label after reaching the target
+        self.current_node_label = node_label
 
         # Wait an additional second after task completion
-        # This provides a buffer before proceeding to the next task
         time.sleep(1.0)
+
 
 
     def destroy_node(self):
@@ -441,58 +433,47 @@ def main(args=None):
     """
     Main function to initialize and run the navigation node.
     """
-    # Initialize the ROS2 Python client library
-    # This sets up ROS2 communication infrastructure for the node
+    # Inizializza rclpy con il supporto degli argomenti aggiuntivi di ROS 2
     rclpy.init(args=args)
 
-    # Create an argument parser to handle command-line inputs
+    # Creazione dell'argparse per i parametri richiesti
     parser = argparse.ArgumentParser(description='Robot Navigation Node with Internal Graph Partitioning')
 
-    # Define the required arguments for the robot
-    parser.add_argument('--robot_namespace', type=str, required=True, 
-                        help='Unique namespace of the robot (e.g., "robot_1"). This distinguishes each robot.')
-    parser.add_argument('--graph_path', type=str, required=True, 
-                        help='Path to the JSON file containing the full graph structure.')
-    parser.add_argument('--robot_id', type=int, required=True, 
-                        help='Unique ID of the robot (e.g., 0 for the first robot, 1 for the second, etc.).')
-    parser.add_argument('--num_robots', type=int, required=True, 
-                        help='Total number of robots in the system.')
-    parser.add_argument('--start_x', type=float, required=True, 
-                        help='Starting x coordinate for the robot. This determines its initial position on the graph.')
-    parser.add_argument('--start_y', type=float, required=True, 
-                        help='Starting y coordinate for the robot. This also determines its initial position on the graph.')
+    # Argomenti definiti dall'utente
+    parser.add_argument('--robot_namespace', type=str, required=True, help='Unique namespace of the robot')
+    parser.add_argument('--graph_path', type=str, required=True, help='Path to the full graph JSON file')
+    parser.add_argument('--robot_id', type=int, required=True, help='Unique ID of the robot (e.g., 0, 1, 2)')
+    parser.add_argument('--num_robots', type=int, required=True, help='Total number of robots')
+    parser.add_argument('--start_x', type=float, required=True, help='Starting x coordinate')
+    parser.add_argument('--start_y', type=float, required=True, help='Starting y coordinate')
 
-    # Parse the command-line arguments into a structured object
-    args = parser.parse_args()
+    # Rimuove gli argomenti specifici di ROS 2 che causano problemi ad argparse
+    argv = rclpy.utilities.remove_ros_args(args)
 
-    # Create a dictionary to represent the starting point of the robot
-    # This contains the x and y coordinates passed from the command line
-    starting_point = {'x': args.start_x, 'y': args.start_y}
+    # Parsing degli argomenti
+    parsed_args = parser.parse_args(argv[1:])
 
-    # Instantiate the navigation node for the robot
-    # Pass all the required arguments, including the robot's namespace, graph path, ID, total robots, and starting point
+    # Dizionario del punto iniziale
+    starting_point = {'x': parsed_args.start_x, 'y': parsed_args.start_y}
+
+    # Creazione del nodo di navigazione
     navigation_node = RobotNavigationNode(
-        args.robot_namespace,  # Unique namespace for the robot
-        args.graph_path,       # Path to the JSON graph file
-        args.robot_id,         # Robot's unique ID
-        args.num_robots,       # Total number of robots
-        starting_point         # Starting point coordinates
+        parsed_args.robot_namespace,
+        parsed_args.graph_path,
+        parsed_args.robot_id,
+        parsed_args.num_robots,
+        starting_point
     )
 
     try:
-        # Keep the ROS2 node active to process incoming and outgoing messages
-        # This allows the node to handle callbacks, such as receiving target updates or processing navigation commands
+        # Mantieni attivo il nodo per processare callback e comunicazioni
         rclpy.spin(navigation_node)
     except KeyboardInterrupt:
-        # Gracefully handle a keyboard interrupt (Ctrl+C) to stop the program
+        # Gestione dell'interruzione tramite Ctrl+C
         pass
     finally:
-        # Clean up resources before shutting down
-        # Destroy the navigation node to ensure all threads and processes terminate properly
+        # Distruzione del nodo e shutdown di rclpy
         navigation_node.destroy_node()
-
-        # Shut down the ROS2 client library
-        # This ensures the ROS2 communication infrastructure is properly closed
         rclpy.shutdown()
 
 # Entry point for the script
