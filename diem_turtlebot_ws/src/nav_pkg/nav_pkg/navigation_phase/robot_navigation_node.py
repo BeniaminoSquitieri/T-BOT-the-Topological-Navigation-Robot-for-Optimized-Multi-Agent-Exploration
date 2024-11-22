@@ -11,6 +11,9 @@ import rclpy
 from rclpy.node import Node
 from std_msgs.msg import String
 from turtlebot4_navigation.turtlebot4_navigator import TurtleBot4Navigator
+import asyncio
+
+
 
 class RobotNavigationNode(Node):
     """
@@ -89,9 +92,9 @@ class RobotNavigationNode(Node):
         # Set the robot's initial pose to the starting point
         self.set_initial_pose(starting_point)
 
-        # Start the navigation in a separate thread to allow ROS2 callbacks to be processed
-        self.navigation_thread = threading.Thread(target=self.navigate)
-        self.navigation_thread.start()
+        # # Start the navigation in a separate thread to allow ROS2 callbacks to be processed
+        # self.navigation_thread = threading.Thread(target=self.navigate)
+        # self.navigation_thread.start()
 
     def load_graph(self, graph_file_path):
         """
@@ -161,10 +164,13 @@ class RobotNavigationNode(Node):
 
         # Assign the nodes of the current robot's partition to `subgraph_nodes`
         self.subgraph_nodes = list(self.node_partitions[self.robot_id])
-        self.get_logger().info(f"[{self.robot_namespace}] Assigned nodes: {self.subgraph_nodes}")
+
+        # Stampare il sottografo assegnato
+        self.get_logger().info(f"[{self.robot_namespace}] Assigned subgraph nodes: {self.subgraph_nodes}")
 
         # Create a subgraph containing only the nodes assigned to this robot
         self.subgraph = self.nx_graph.subgraph(self.subgraph_nodes).copy()
+
 
 
     def target_callback(self, msg):
@@ -283,46 +289,29 @@ class RobotNavigationNode(Node):
         time.sleep(1.0)
 
 
-    def navigate(self):
-        """
-        Main navigation loop where the robot selects nodes to visit while communicating targets.
-        """
-        # Initialize the navigation by setting the current node to the starting node
-        current_node_label = self.current_node_label  # Start from the initial node
+    async def navigate(self):
+        self.get_logger().info(f"[{self.robot_namespace}] Starting navigation in assigned subgraph: {self.subgraph_nodes}")
+        current_node_label = self.current_node_label
 
-        # Main navigation loop; runs as long as the ROS2 system is operational
         while rclpy.ok():
-            # Use the `select_next_node` method to determine the next node to visit
             next_node = self.select_next_node(current_node_label)
-
-            # If no valid next node is found, terminate navigation
             if not next_node:
-                # Log that the robot has completed its navigation task
-                self.get_logger().info(
-                    f"[{self.robot_namespace}] No more nodes to visit. Navigation completed."
-                )
-                break  # Exit the loop as there are no more nodes to visit
+                self.get_logger().info(f"[{self.robot_namespace}] Navigation completed.")
+                break
 
-            # Announce the target node to other robots via a ROS2 topic
-            # This prevents conflicts by informing others that this node is being visited
             self.announce_target_node(next_node)
 
-            # Navigate to the selected node
-            # This involves moving the robot to the coordinates of the `next_node`
-            self.navigate_to_node(next_node)
+            # Naviga al prossimo nodo
+            await self.navigate_to_node(current_node_label, next_node)
 
-            # Update the current node to the one the robot has just visited
             current_node_label = next_node
 
-            # Once the robot reaches the node, remove it from the list of targeted nodes
-            # This allows other robots to potentially visit this node in the future if needed
             with self.node_lock:
                 self.targeted_nodes.discard(next_node)
 
-        # After exiting the loop, log that the navigation process has ended
-        self.get_logger().info(
-            f"[{self.robot_namespace}] Exiting navigation loop."
-        )
+        self.get_logger().info(f"[{self.robot_namespace}] Exiting navigation loop.")
+
+
 
 
     def select_next_node(self, current_node):
@@ -336,12 +325,12 @@ class RobotNavigationNode(Node):
             str: The next node to move to, or None if no nodes are available.
         """
         # Acquire the lock to ensure thread-safe access to the shared node sets
-        # This prevents race conditions when modifying `visited_nodes` and `targeted_nodes`
         with self.node_lock:
             # Identify all neighboring nodes of the current node in the subgraph
             # Only include nodes that:
             # 1. Are not already visited (to avoid revisiting the same node)
             # 2. Are not currently targeted by other robots (to avoid conflicts)
+            # 3. Are within the subgraph assigned to the robot
             neighbors = [
                 v for v in self.subgraph.neighbors(current_node)  # Iterate over adjacent nodes
                 if v not in self.visited_nodes and v not in self.targeted_nodes
@@ -377,69 +366,60 @@ class RobotNavigationNode(Node):
                 return None
 
 
-    def navigate_to_node(self, node_label):
+    async def navigate_to_node(self, current_node, target_node):
         """
-        Navigates to the specified node.
+        Navigates to the specified node asynchronously.
 
         Args:
-            node_label (str): Identifier of the node to navigate to.
+            current_node (str): The current node label.
+            target_node (str): The target node label.
         """
-        # Get the coordinates of the target node from the graph
-        x, y = self.nx_graph.nodes[node_label]['x'], self.nx_graph.nodes[node_label]['y']
+        x, y = self.nx_graph.nodes[target_node]['x'], self.nx_graph.nodes[target_node]['y']
+        orientation = self.calculate_orientation(current_node, target_node)
 
-        # Get the coordinates of the current node from the graph
-        current_node_label = self.current_node_label
-        x0, y0 = self.nx_graph.nodes[current_node_label]['x'], self.nx_graph.nodes[current_node_label]['y']
-
-        # Calculate the orientation towards the target node
-        orientation = math.atan2(y - y0, x - x0)
-
-        # Create a goal pose for the robot
+        # Crea il goal pose
         goal_pose = self.navigator.getPoseStamped([x, y], orientation)
 
-        # Instruct the navigator to begin moving towards the goal pose
-        self.navigator.startToPose(goal_pose)
-        self.get_logger().info(f"[{self.robot_namespace}] Navigating to node {node_label} at ({x}, {y}).")
+        self.get_logger().info(f"[{self.robot_namespace}] Navigating to node {target_node} at ({x}, {y}).")
 
-        # Wait until the navigation task is complete
-        while not self.navigator.isTaskComplete():
-            time.sleep(0.5)
+        # Avvia la navigazione verso il goal pose
+        send_goal_future = self.navigator.startToPose(goal_pose)
 
-        # Update the current node label after reaching the target
-        self.current_node_label = node_label
+        if send_goal_future is None:
+            self.get_logger().error(f"[{self.robot_namespace}] Failed to send goal to {target_node}. Exiting.")
+            return
 
-        # Wait an additional second after task completion
-        time.sleep(1.0)
+        # Aspetta il completamento
+        try:
+            await asyncio.wrap_future(send_goal_future)
+            self.get_logger().info(f"[{self.robot_namespace}] Reached node {target_node}.")
+        except Exception as e:
+            self.get_logger().error(f"[{self.robot_namespace}] Navigation to {target_node} failed: {str(e)}")
+
+
+    def calculate_orientation(self, current_node, target_node):
+        # Coordinate del nodo corrente
+        x0, y0 = self.nx_graph.nodes[current_node]['x'], self.nx_graph.nodes[current_node]['y']
+        # Coordinate del nodo target
+        x1, y1 = self.nx_graph.nodes[target_node]['x'], self.nx_graph.nodes[target_node]['y']
+        # Calcolo dell'angolo (orientamento) in radianti
+        return math.atan2(y1 - y0, x1 - x0)
+
 
 
 
     def destroy_node(self):
         """
-        Overrides the destroy_node method to ensure the navigation thread is properly closed.
+        Overrides the destroy_node method to ensure resources are properly released.
         """
-        # Log the shutdown process for the current navigation node
         self.get_logger().info(f"[{self.robot_namespace}] Shutting down navigation node.")
-
-        # Wait for the navigation thread to complete execution
-        # This ensures no unfinished navigation logic persists after shutdown
-        self.navigation_thread.join()
-
-        # Call the superclass method to perform standard node destruction
-        # This releases resources and stops all ongoing ROS2 processes associated with the node
         super().destroy_node()
 
 
+
 def main(args=None):
-    """
-    Main function to initialize and run the navigation node.
-    """
-    # Inizializza rclpy con il supporto degli argomenti aggiuntivi di ROS 2
     rclpy.init(args=args)
-
-    # Creazione dell'argparse per i parametri richiesti
     parser = argparse.ArgumentParser(description='Robot Navigation Node with Internal Graph Partitioning')
-
-    # Argomenti definiti dall'utente
     parser.add_argument('--robot_namespace', type=str, required=True, help='Unique namespace of the robot')
     parser.add_argument('--graph_path', type=str, required=True, help='Path to the full graph JSON file')
     parser.add_argument('--robot_id', type=int, required=True, help='Unique ID of the robot (e.g., 0, 1, 2)')
@@ -447,16 +427,10 @@ def main(args=None):
     parser.add_argument('--start_x', type=float, required=True, help='Starting x coordinate')
     parser.add_argument('--start_y', type=float, required=True, help='Starting y coordinate')
 
-    # Rimuove gli argomenti specifici di ROS 2 che causano problemi ad argparse
     argv = rclpy.utilities.remove_ros_args(args)
-
-    # Parsing degli argomenti
     parsed_args = parser.parse_args(argv[1:])
 
-    # Dizionario del punto iniziale
     starting_point = {'x': parsed_args.start_x, 'y': parsed_args.start_y}
-
-    # Creazione del nodo di navigazione
     navigation_node = RobotNavigationNode(
         parsed_args.robot_namespace,
         parsed_args.graph_path,
@@ -466,15 +440,19 @@ def main(args=None):
     )
 
     try:
-        # Mantieni attivo il nodo per processare callback e comunicazioni
-        rclpy.spin(navigation_node)
+        # Esegui il loop asyncio
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(navigation_node.navigate())
     except KeyboardInterrupt:
-        # Gestione dell'interruzione tramite Ctrl+C
         pass
     finally:
-        # Distruzione del nodo e shutdown di rclpy
         navigation_node.destroy_node()
         rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
+
+
 
 # Entry point for the script
 # This ensures the main function is executed only when the script is run directly
