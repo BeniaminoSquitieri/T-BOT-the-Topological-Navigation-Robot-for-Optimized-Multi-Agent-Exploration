@@ -9,7 +9,7 @@ import numpy as np
 # Map values provided directly (corresponding to diem_map.yaml file)
 resolution = 0.05  # meters per pixel
 origin = (-32.507755, -27.073547)  # origin coordinates (x, y) of the map
-image_path = "/home/beniamino/turtlebot4/diem_turtlebot_ws/src/map/diem_map.pgm"  # full path to the map image
+image_path = "/home/beniamino/turtlebot4/diem_turtlebot_ws/src/multi_robot_pkg_navigation/map/diem_map.pgm"  # full path to the map image
 
 def map_to_pixel(x_map, y_map, origin, resolution, image_height):
     """

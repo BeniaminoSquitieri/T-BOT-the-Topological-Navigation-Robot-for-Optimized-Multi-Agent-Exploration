@@ -8,7 +8,7 @@ import sys
 import json
 
 # Add the path to the graph partitioning module so it can be imported
-sys.path.append('/home/beniamino/turtlebot4/diem_turtlebot_ws/src/map/map_transformation_phase/graph/graph_partitioning.py')  
+sys.path.append('/home/beniamino/turtlebot4/diem_turtlebot_ws/src/multi_robot_pkg_navigation/map/map_transformation_phase/graph/graph_partitioning.py')  
 
 # Import the graph partitioning module for graph loading, partitioning, and saving
 import graph_partitioning
@@ -56,12 +56,6 @@ def generate_launch_description():
     ])
 
     def launch_setup(context, *args, **kwargs):
-        """
-        Launch setup function dynamically generates the navigation nodes.
-        - Partitions the graph into subgraphs based on the number of robots.
-        - Saves the subgraphs to individual files.
-        - Configures and launches navigation nodes for each robot.
-        """
         # Retrieve the graph path from the launch context
         graph_path = LaunchConfiguration('graph_path').perform(context)
         # Retrieve the list of robot namespaces and split them into a Python list

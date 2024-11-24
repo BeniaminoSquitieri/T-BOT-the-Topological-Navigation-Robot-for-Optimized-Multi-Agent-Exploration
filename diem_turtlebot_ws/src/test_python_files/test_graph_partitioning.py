@@ -4,6 +4,7 @@ import shutil  # Per gestire la rimozione delle directory
 import networkx as nx
 import matplotlib.pyplot as plt
 import sys
+
 sys.path.append('/home/beniamino/turtlebot4/diem_turtlebot_ws/src/map/map_transformation_phase/graph')
 
 from graph_partitioning import load_full_graph, partition_graph, save_subgraphs
@@ -14,7 +15,7 @@ IMAGES_DIR = "./graph_images"  # Puoi personalizzare il percorso qui
 def reset_directory(directory_path):
     """
     Distrugge e ricrea una directory.
-    
+
     Args:
         directory_path (str): Il percorso della directory da ripristinare.
     """
@@ -25,7 +26,7 @@ def reset_directory(directory_path):
 def save_graph_as_image(graph, title, image_path):
     """
     Salva un grafo come immagine PNG.
-    
+
     Args:
         graph (nx.Graph): Il grafo da salvare come immagine.
         title (str): Il titolo da visualizzare sull'immagine.
@@ -33,7 +34,7 @@ def save_graph_as_image(graph, title, image_path):
     """
     # Genera le posizioni dei nodi in base alle coordinate 'x' e 'y'
     pos = {node: (data['x'], data['y']) for node, data in graph.nodes(data=True)}
-    
+
     # Disegna il grafo
     plt.figure(figsize=(10, 8))
     nx.draw(graph, pos, with_labels=True, node_size=700, node_color='lightblue')
