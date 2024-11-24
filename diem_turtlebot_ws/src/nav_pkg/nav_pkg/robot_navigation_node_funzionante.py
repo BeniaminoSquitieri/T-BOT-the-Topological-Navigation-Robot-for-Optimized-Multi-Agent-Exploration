@@ -233,7 +233,6 @@ class RobotNavigationNode(Node):
             str: The label of the nearest node, or None if no nodes are found in the subgraph.
         """
         # Initialize the minimum distance to infinity
-        # This acts as the comparison baseline to find the closest node
         min_distance = float('inf')
 
         # Variable to store the label of the nearest node
@@ -281,7 +280,6 @@ class RobotNavigationNode(Node):
         initial_pose = self.navigator.getPoseStamped([x, y], 0.0)
 
         # Set the robot's initial pose using the TurtleBot4 navigator
-        # This ensures that the robot's starting location is correctly initialized
         self.navigator.setInitialPose(initial_pose)
 
         # Wait for a short period to allow the initial pose to be properly set
@@ -290,26 +288,46 @@ class RobotNavigationNode(Node):
 
 
     async def navigate(self):
+        # Log the start of the navigation process, including the nodes assigned to this robot.
+        # This provides an overview of the subgraph the robot will explore.
         self.get_logger().info(f"[{self.robot_namespace}] Starting navigation in assigned subgraph: {self.subgraph_nodes}")
+
+        # Set the current node to the robot's starting position.
+        # This ensures the navigation process begins from the correct initial node.
         current_node_label = self.current_node_label
 
+        # Continue navigating while the ROS2 system is active.
         while rclpy.ok():
+            # Select the next node to visit based on the current position.
+            # This uses the graph structure and the robot's assigned subgraph to choose the next node.
             next_node = self.select_next_node(current_node_label)
+
+            # If no valid next node is available, it means the robot has completed its navigation task.
             if not next_node:
                 self.get_logger().info(f"[{self.robot_namespace}] Navigation completed.")
                 break
 
+            # Announce the target node to other robots.
+            # This prevents conflicts by ensuring no two robots aim for the same node simultaneously.
             self.announce_target_node(next_node)
 
-            # Naviga al prossimo nodo
+            # Navigate to the selected node asynchronously.
+            # This ensures the robot can perform other tasks or process events while moving.
             await self.navigate_to_node(current_node_label, next_node)
 
+            # Update the current node to the one just visited.
+            # This prepares for the next iteration of the navigation loop.
             current_node_label = next_node
 
+            # Safely remove the node from the list of targeted nodes.
+            # This ensures it is no longer marked as "in progress" and prevents conflicts with other robots.
             with self.node_lock:
                 self.targeted_nodes.discard(next_node)
 
+        # Log the end of the navigation loop.
+        # This indicates the robot is exiting the navigation process.
         self.get_logger().info(f"[{self.robot_namespace}] Exiting navigation loop.")
+
 
 
 
@@ -418,8 +436,17 @@ class RobotNavigationNode(Node):
 
 
 def main(args=None):
+    # Initialize the ROS2 system
     rclpy.init(args=args)
+
+    # Create a parser to read command-line parameters.
+    # Parsing arguments allows us to dynamically configure the robot's behavior at runtime.
+    # For example, we can specify the robot's namespace, graph file, ID, number of robots, and starting position.
     parser = argparse.ArgumentParser(description='Robot Navigation Node with Internal Graph Partitioning')
+
+    # Define the required parameters for the node.
+    # These arguments allow the node to understand which robot it represents,
+    # where it starts, how many robots exist, and the map it should use for navigation.
     parser.add_argument('--robot_namespace', type=str, required=True, help='Unique namespace of the robot')
     parser.add_argument('--graph_path', type=str, required=True, help='Path to the full graph JSON file')
     parser.add_argument('--robot_id', type=int, required=True, help='Unique ID of the robot (e.g., 0, 1, 2)')
@@ -427,34 +454,45 @@ def main(args=None):
     parser.add_argument('--start_x', type=float, required=True, help='Starting x coordinate')
     parser.add_argument('--start_y', type=float, required=True, help='Starting y coordinate')
 
+    # Remove any ROS2-specific arguments that might interfere and parse the user-defined arguments.
+    # This ensures that only relevant arguments for this script are considered. ROS2 adds some default arguments (e.g., for remapping topics or namespaces) which are not relevant for this script.
+    # Removing them ensures that our argument parser processes only the ones explicitly defined for the navigation node.
     argv = rclpy.utilities.remove_ros_args(args)
     parsed_args = parser.parse_args(argv[1:])
 
+    # Create a dictionary with the robot's starting coordinates.
+    # This helps encapsulate the position information in a simple, reusable format.
     starting_point = {'x': parsed_args.start_x, 'y': parsed_args.start_y}
+
+    # Instantiate the navigation node using the provided parameters.
+    # These parameters will determine the robot's behavior and assigned tasks.
     navigation_node = RobotNavigationNode(
-        parsed_args.robot_namespace,
-        parsed_args.graph_path,
-        parsed_args.robot_id,
-        parsed_args.num_robots,
-        starting_point
+        parsed_args.robot_namespace,  # Unique namespace for the robot
+        parsed_args.graph_path,       # Path to the graph JSON file
+        parsed_args.robot_id,         # Robot's unique identifier
+        parsed_args.num_robots,       # Total number of robots
+        starting_point                # Robot's starting point
     )
 
     try:
-        # Esegui il loop asyncio
+        # Get the asyncio event loop to execute the node.
+        # Asynchronous execution allows for non-blocking operations, which are ideal for real-time systems like ROS2.
         loop = asyncio.get_event_loop()
+        # Start the asynchronous navigation task.
         loop.run_until_complete(navigation_node.navigate())
     except KeyboardInterrupt:
+        # Handle keyboard interrupt (Ctrl+C) gracefully.
+        # This ensures the program exits cleanly without leaving processes hanging.
         pass
     finally:
+        # Properly shut down the node and release ROS2 resources.
+        # Ensures that any resources allocated by the node are cleaned up.
         navigation_node.destroy_node()
         rclpy.shutdown()
 
+# Program entry point
+# The `if __name__ == '__main__'` condition ensures this script runs only if executed directly,
+# and not if it's imported as a module into another script.
 if __name__ == '__main__':
     main()
 
-
-
-# Entry point for the script
-# This ensures the main function is executed only when the script is run directly
-if __name__ == '__main__':
-    main()

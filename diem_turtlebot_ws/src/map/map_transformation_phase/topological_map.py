@@ -596,28 +596,11 @@ def process_map(image_path):
         transformer
     )
 
-# ### UBUNTU VERSION
-# if __name__ == "__main__":
-
-#     # Default path for the map
-#     default_image_path = "/home/beniamino/turtlebot4/diem_turtlebot_ws/src/map/diem_map.pgm"
-
-#     # Create argument parser
-#     parser = argparse.ArgumentParser(description="Generate a topological map from an occupancy map.")
-#     parser.add_argument('image_path', type=str, nargs='?', default=default_image_path,
-#                         help="Path to the map image to process (default: diem_turtlebot_ws/src/map/diem_map.pgm)")
-
-#     # Parse arguments
-#     args = parser.parse_args()
-
-#     # Process the specified map
-#     process_map(args.image_path)
-
-#### WINDOWS  VERSION
-
+### UBUNTU VERSION
 if __name__ == "__main__":
-    # Default path for the map, with double backslashes for Windows
-    default_image_path = os.path.join("..", "diem_map.pgm")
+
+    # Default path for the map
+    default_image_path = "/home/beniamino/turtlebot4/diem_turtlebot_ws/src/map/diem_map.pgm"
 
     # Create argument parser
     parser = argparse.ArgumentParser(description="Generate a topological map from an occupancy map.")
