@@ -345,7 +345,7 @@ class RobotNavigationNode(Node):
     def navigate_to_node(self, current_node, target_node):
         """
         Navigates the robot to the target node.
-
+        
         Args:
             current_node (str): Current node label.
             target_node (str): Target node label.
@@ -355,12 +355,15 @@ class RobotNavigationNode(Node):
 
         # Calculate the orientation for the robot to face the target node
         orientation = self.calculate_orientation(current_node, target_node)
+        
+        # Convert l'orientamento da radianti a stringa
+        orientation_str = self.get_orientation_str(orientation)
 
         # Create a goal pose for navigation
         goal_pose = self.navigator.getPoseStamped([x, y], orientation)
 
-        # Log the navigation task
-        self.get_logger().info(f"[{self.robot_namespace}] Navigating to node {target_node} at ({x}, {y}) with orientation {orientation} radians.")
+        # Log the navigation task with orientamento come stringa
+        self.get_logger().info(f"[{self.robot_namespace}] Navigating to node {target_node} at ({x}, {y}) with orientation {orientation_str} ({orientation} radians).")
 
         # Start navigation and handle potential failures
         result = self.navigator.startToPose(goal_pose)
@@ -373,7 +376,9 @@ class RobotNavigationNode(Node):
             rclpy.spin_once(self, timeout_sec=0.1)
 
         # Log that the target node has been reached
-        self.get_logger().info(f"[{self.robot_namespace}] Reached node {target_node}.")
+        self.get_logger().info(f"[{self.robot_namespace}] Reached node {target_node} with orientation {orientation_str} ({orientation} radians).")
+
+
 
     def navigate_to_coordinates(self, start_point, target_node_data):
         """
@@ -462,6 +467,29 @@ class RobotNavigationNode(Node):
             "WEST": math.pi / 2
         }
         return orientation_map.get(orientation_str.upper(), 0.0)
+    
+
+    def get_orientation_str(self, orientation_radians):
+        """
+        Converte un angolo in radianti nella stringa di orientamento corrispondente.
+        
+        Args:
+            orientation_radians (float): Angolo in radianti.
+        
+        Returns:
+            str: Orientamento come stringa ('NORTH', 'EAST', 'SOUTH', 'WEST').
+        """
+        orientation_map = {
+            0.0: 'NORTH',
+            -math.pi / 2: 'EAST',
+            math.pi: 'SOUTH',
+            math.pi / 2: 'WEST'
+        }
+        
+        # Trova l'orientamento più vicino basato sull'angolo
+        closest_orientation = min(orientation_map.keys(), key=lambda k: abs(k - orientation_radians))
+        return orientation_map[closest_orientation]
+
 
     def get_next_node_in_route(self, current_node_label):
         """
