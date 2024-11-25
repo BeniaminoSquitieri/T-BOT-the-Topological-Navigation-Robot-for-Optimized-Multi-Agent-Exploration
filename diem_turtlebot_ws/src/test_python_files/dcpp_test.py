@@ -3,6 +3,7 @@ import math
 import networkx as nx
 import argparse
 import os
+import random
 
 def load_graph(graph_file_path):
     """
@@ -125,18 +126,22 @@ def reorder_route(route, start_node_label):
     return route
 
 def main():
-    # Command line argument parsing for the start node
+    # Command line argument parsing for the start node and graph file path
     parser = argparse.ArgumentParser(description="DCPP Navigation on a Graph.")
     parser.add_argument('--start_node', type=str, required=True, help="Starting node (e.g., 'node_1')")
+    parser.add_argument('--graph_path', type=str, required=True, help="Path to the JSON file containing the graph.")
     args = parser.parse_args()
     start_node_label = args.start_node
-
-    # Path to the graph JSON file
-    script_path = os.path.dirname(os.path.abspath(__file__))
-    graph_path = os.path.join(script_path, '/home/beniamino/turtlebot4/diem_turtlebot_ws/src/map/map_transformation_phase/graph/navigation_graph_simplified.json')
+    graph_path = args.graph_path
 
     # Load the graph from the JSON file
     G = load_graph(graph_path)
+
+    # Check if the start node is in the graph
+    if start_node_label not in G.nodes():
+        # Select a random node from the graph
+        start_node_label = random.choice(list(G.nodes()))
+        print(f"Warning: The specified start node was not found in the graph. Using random node '{start_node_label}' instead.")
 
     # Compute the DCPP route for the graph
     route = compute_dcpp_route(G)

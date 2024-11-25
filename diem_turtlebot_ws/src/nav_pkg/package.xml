@@ -3,9 +3,11 @@
 <package format="3">
   <name>nav_pkg</name>
   <version>0.0.0</version>
-  <description>TODO: Package description</description>
+  <description>Robot Navigation Node for Multi-Robot System</description>
   <maintainer email="44608428+gdesimone97@users.noreply.github.com">gdesimone</maintainer>
-  <license>TODO: License declaration</license>
+  <license>Apache License 2.0</license>
+
+  <buildtool_depend>ament_python</buildtool_depend>
 
   <depend>rclpy</depend>
   <depend>std_msgs</depend>

@@ -1,11 +1,11 @@
 import os
 import argparse
-import shutil  # Per gestire la rimozione delle directory
+import shutil  
 import networkx as nx
 import matplotlib.pyplot as plt
 import sys
 
-sys.path.append('/home/beniamino/turtlebot4/diem_turtlebot_ws/src/map/map_transformation_phase/graph')
+sys.path.append('/home/beniamino/turtlebot4/diem_turtlebot_ws/src/multi_robot_pkg_navigation/map/map_transformation_phase/graph')
 
 from graph_partitioning import load_full_graph, partition_graph, save_subgraphs
 
