@@ -1,4 +1,4 @@
-# nav_pkg/map/map_transformation_phase/graph/graph_partitioning.py
+# multi_nav_pkg/graph_partitioning.py
 
 import os
 import json
@@ -120,7 +120,6 @@ def partition_graph(full_graph, num_partitions, start_positions=None, capacities
 
     return subgraphs
 
-
 def duplicate_common_edges(subgraph, full_graph, cluster_idx):
     """
     Duplicates edges that are common between subgraphs to ensure each subgraph
@@ -239,10 +238,6 @@ def save_subgraphs(subgraphs, output_dir):
                 "to": v,
                 "weight": data.get("weight", 1.0)
             }
-            if 'duplex' in data:
-                edge_info['duplex'] = data['duplex']
-            if 'direction' in data:
-                edge_info['direction'] = data['direction']
             if 'cluster' in data:
                 edge_info['cluster'] = data['cluster']
             subgraph_data["edges"].append(edge_info)

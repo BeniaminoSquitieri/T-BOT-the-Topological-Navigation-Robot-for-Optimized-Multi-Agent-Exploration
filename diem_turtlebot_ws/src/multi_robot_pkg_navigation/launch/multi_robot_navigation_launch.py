@@ -163,4 +163,3 @@ def generate_launch_description():
 # ros2 launch turtlebot4_viz view_robot.launch.py namespace:=/robot_111
 
 # ros2 launch multi_robot_pkg_navigation multi_robot_navigation_launch.py graph_path:=/home/beniamino/turtlebot4/diem_turtlebot_ws/src/multi_robot_pkg_navigation/nav_pkg/nav_pkg/navigation_hardware_limitation.json robot_namespaces:=robot_108,robot_111 start_positions:=17.292245:-1.1235469999999985,17.192245:-8.623547000000002
-# ros2 launch multi_robot_pkg_navigation multi_robot_navigation_launch.py graph_path:=/home/beniamino/turtlebot4/diem_turtlebot_ws/src/multi_robot_pkg_navigation/nav_pkg/nav_pkg/navigation_hardware_limitation.json robot_namespaces:=robot_108,robot_111 start_positions:=17.292245:-1.1235469999999985,17.192245:-8.623547000000002

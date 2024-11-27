@@ -383,7 +383,7 @@ class RobotNavigationNode(Node):
     def navigate_to_coordinates(self, start_point, target_node_data):
         """
         Navigates the robot to the coordinates of the nearest node before starting the main navigation.
-
+s
         Args:
             start_point (dict): Starting coordinates with 'x' and 'y' keys.
             target_node_data (dict): Data of the target node.
