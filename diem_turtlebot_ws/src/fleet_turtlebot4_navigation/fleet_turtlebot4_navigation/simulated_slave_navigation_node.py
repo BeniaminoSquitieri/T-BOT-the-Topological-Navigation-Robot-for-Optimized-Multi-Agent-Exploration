@@ -163,3 +163,6 @@ def main(args=None):
 
 if __name__ == '__main__':
     main()
+
+#ros2 run fleet_turtlebot4_navigation simulated_slave_navigation_node -- --robot_namespace robot_1 --initial_x 1.0 --initial_y 2.0 --initial_orientation NORTH
+
