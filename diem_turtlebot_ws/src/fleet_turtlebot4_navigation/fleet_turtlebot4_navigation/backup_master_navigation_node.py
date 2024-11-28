@@ -1,32 +1,34 @@
-# multi_nav_pkg/backup_master_navigation_node.py
+#!/usr/bin/env python3
 
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import String
-from multi_nav_pkg.msg import Waypoint, NavigationStatus
 import json
 import networkx as nx
 import os
-import sys
 import time
-import logging
-import socket
-from graph_partitioning import load_full_graph, partition_graph, save_subgraphs
+from .graph_partitioning import load_full_graph, partition_graph, save_subgraphs
 
 class BackupMasterNavigationNode(Node):
-    def __init__(self, graph_path, output_dir, check_interval=2.0, heartbeat_timeout=3.0):
+    def __init__(self):
         super().__init__('backup_master_navigation_node')
-        
-        self.graph_path = graph_path
-        self.output_dir = output_dir
-        self.check_interval = check_interval
-        self.heartbeat_timeout = heartbeat_timeout
 
-        # Carica il grafo completo
+        # Declare parameters
+        self.declare_parameter('graph_path', '')
+        self.declare_parameter('output_dir', '/tmp')
+        self.declare_parameter('check_interval', 2.0)
+        self.declare_parameter('heartbeat_timeout', 3.0)
+
+        self.graph_path = self.get_parameter('graph_path').get_parameter_value().string_value
+        self.output_dir = self.get_parameter('output_dir').get_parameter_value().string_value
+        self.check_interval = self.get_parameter('check_interval').get_parameter_value().double_value
+        self.heartbeat_timeout = self.get_parameter('heartbeat_timeout').get_parameter_value().double_value
+
+        # Load the full graph
         self.full_graph = load_full_graph(self.graph_path)
         self.get_logger().info("Backup Master node loaded the graph.")
 
-        # Sottoscrizioni e Publisher
+        # Subscriptions and Publishers
         self.slave_registration_subscriber = self.create_subscription(
             String,
             'slave_registration',
@@ -34,33 +36,33 @@ class BackupMasterNavigationNode(Node):
             10
         )
 
-        # Publisher per i comandi di navigazione per ogni slave
+        # Publisher for navigation commands to each slave
         self.navigation_command_publishers = {}
 
-        # Dizionario per tracciare i slave attivi: {namespace: last_seen_time}
+        # Dictionary to track active slaves: {namespace: last_seen_time}
         self.active_slaves = {}
 
-        # Dizionario per tracciare i waypoint assegnati: {namespace: [waypoints]}
+        # Dictionary to track assigned waypoints: {namespace: [waypoints]}
         self.assigned_waypoints = {}
 
-        # Dizionario per tracciare se lo slave sta navigando: {namespace: bool}
+        # Dictionary to track if the slave is navigating: {namespace: bool}
         self.slave_busy = {}
 
-        # Set per tracciare i waypoint assegnati (per evitare duplicazioni)
+        # Set to track assigned waypoints globally (to avoid duplication)
         self.assigned_waypoints_set = set()
 
-        # Timer per il controllo periodico dei slave
+        # Timer for periodic slave checks
         self.timer = self.create_timer(self.check_interval, self.timer_callback)
 
-        # Subscriber per ricevere feedback dai slave
+        # Subscriber to receive feedback from slaves
         self.navigation_status_subscriber = self.create_subscription(
-            NavigationStatus,
+            String,
             'navigation_status',
             self.navigation_status_callback,
             10
         )
 
-        # Subscriber per heartbeat del master primario
+        # Subscriber for heartbeat from the primary master
         self.heartbeat_subscriber = self.create_subscription(
             String,
             'master_heartbeat',
@@ -68,61 +70,31 @@ class BackupMasterNavigationNode(Node):
             10
         )
 
-        # Variabile per tracciare l'ultimo heartbeat ricevuto
+        # Variable to track the last heartbeat received
         self.last_heartbeat = None
 
-        # Timer per controllare il heartbeat
+        # Timer to check heartbeat
         self.heartbeat_check_timer = self.create_timer(1.0, self.check_master_alive)
 
-        # Flag per evitare doppie attivazioni
+        # Flag to avoid multiple activations
         self.is_active_master = False
 
-        # Publisher per heartbeat (diventa master attivo se necessario)
+        # Publisher for heartbeat (becomes active if necessary)
         self.heartbeat_publisher = None
         self.heartbeat_timer = None
 
-        # Configurazione del logger per inviare i log a Logstash
-        self.logstash_host = '192.168.1.100'  # Indirizzo IP del server Logstash
-        self.logstash_port = 5000            # Porta configurata in Logstash
-
-        # Configura il logger
-        self.logger = logging.getLogger('BackupMasterNavigationNode')
-        self.logger.setLevel(logging.DEBUG)
-
-        # Crea un handler socket
-        try:
-            self.socket_handler = logging.handlers.SocketHandler(self.logstash_host, self.logstash_port)
-            self.logger.addHandler(self.socket_handler)
-            self.logger.debug("Socket handler for Logstash successfully added.")
-        except Exception as e:
-            self.get_logger().error(f"Failed to connect to Logstash: {e}")
-
-        # Override dei metodi di logging per inviare i log anche a Logstash
-        self.get_logger().info = self.custom_info
-        self.get_logger().warn = self.custom_warn
-        self.get_logger().error = self.custom_error
-
-    def custom_info(self, msg):
-        self.logger.info(msg)
-        super().get_logger().info(msg)
-
-    def custom_warn(self, msg):
-        self.logger.warning(msg)
-        super().get_logger().warn(msg)
-
-    def custom_error(self, msg):
-        self.logger.error(msg)
-        super().get_logger().error(msg)
+        # Flag to indicate whether the graph has been partitioned and waypoints assigned
+        self.partitioning_done = False
 
     def heartbeat_callback(self, msg):
         if msg.data.strip() == "alive":
             self.last_heartbeat = self.get_clock().now().nanoseconds / 1e9
-            self.get_logger().info("Received heartbeat from primary master.")
+            self.get_logger().debug("Received heartbeat from primary master.")
 
     def check_master_alive(self):
         current_time = self.get_clock().now().nanoseconds / 1e9
         if self.last_heartbeat is None:
-            # Non ha mai ricevuto heartbeat
+            # Has not received any heartbeat yet
             return
         if current_time - self.last_heartbeat > self.heartbeat_timeout:
             if not self.is_active_master:
@@ -131,12 +103,12 @@ class BackupMasterNavigationNode(Node):
                 self.activate_master_functions()
 
     def activate_master_functions(self):
-        # Publisher per heartbeat (ora diventa master)
+        # Publisher for heartbeat (now becomes master)
         self.heartbeat_publisher = self.create_publisher(String, 'master_heartbeat', 10)
         self.heartbeat_timer = self.create_timer(1.0, self.publish_heartbeat)
 
-        # Avvia le funzioni del master primario
-        # Questo include partizionamento e assegnazione dei waypoint
+        # Start the primary master functions
+        # This includes partitioning and assigning waypoints
         self.repartition_and_assign_waypoints()
 
     def publish_heartbeat(self):
@@ -147,24 +119,32 @@ class BackupMasterNavigationNode(Node):
 
     def slave_registration_callback(self, msg):
         if not self.is_active_master:
-            return  # Solo il master attivo gestisce le registrazioni
+            return  # Only the active master handles registrations
         slave_ns = msg.data.strip()
-        current_time = self.get_clock().now().nanoseconds / 1e9  # Tempo corrente in secondi
+        current_time = self.get_clock().now().nanoseconds / 1e9  # Current time in seconds
+        new_slave = False
+        if slave_ns not in self.active_slaves:
+            new_slave = True
         self.active_slaves[slave_ns] = current_time
         self.get_logger().info(f"Received registration from slave: {slave_ns}")
-        # Inizializza le strutture dati per il nuovo slave
+        # Initialize data structures for the new slave
         if slave_ns not in self.assigned_waypoints:
             self.assigned_waypoints[slave_ns] = []
             self.slave_busy[slave_ns] = False
 
+        # If partitioning is already done and a new slave has registered, repartition
+        if self.partitioning_done and new_slave:
+            self.get_logger().info("New slave registered. Repartitioning graph and reassigning waypoints.")
+            self.repartition_and_assign_waypoints()
+
     def timer_callback(self):
         if not self.is_active_master:
-            return  # Solo il master attivo esegue queste operazioni
+            return  # Only the active master performs these operations
 
-        # Tempo corrente
+        # Current time
         current_time = self.get_clock().now().nanoseconds / 1e9
 
-        # Rimuove i slave che non hanno inviato una registrazione entro il timeout
+        # Remove slaves that have timed out
         removed_slaves = []
         for slave_ns in list(self.active_slaves.keys()):
             last_seen = self.active_slaves[slave_ns]
@@ -172,30 +152,30 @@ class BackupMasterNavigationNode(Node):
                 removed_slaves.append(slave_ns)
                 del self.active_slaves[slave_ns]
                 self.get_logger().warn(f"Slave {slave_ns} timed out and removed from active slaves.")
-                # Chiudi il publisher se esiste
+                # Remove publisher if exists
                 if slave_ns in self.navigation_command_publishers:
                     del self.navigation_command_publishers[slave_ns]
-                # Rimuovi waypoint assegnati
+                # Remove assigned waypoints
                 if slave_ns in self.assigned_waypoints:
-                    # Rilascia i waypoint assegnati
+                    # Release the assigned waypoints
                     for wp in self.assigned_waypoints[slave_ns]:
                         wp_id = (wp['label'], wp['x'], wp['y'])
                         self.assigned_waypoints_set.discard(wp_id)
                     del self.assigned_waypoints[slave_ns]
                 if slave_ns in self.slave_busy:
                     del self.slave_busy[slave_ns]
-        
-        # Se il numero di slave attivi è cambiato, ripartiziona il grafo e ridistribuisci i waypoint
-        if removed_slaves or len(self.active_slaves) != len(self.navigation_command_publishers):
+
+        # If slaves have been removed, repartition and reassign
+        if removed_slaves:
             self.get_logger().info("Active slaves changed. Repartitioning graph and reassigning waypoints.")
             self.repartition_and_assign_waypoints()
 
-        # Assegna i waypoint agli slave che non sono occupati
+        # Assign waypoints to available slaves
         for slave_ns in self.active_slaves:
             if not self.slave_busy.get(slave_ns, False):
-                if self.assigned_waypoints[slave_ns]:
+                if self.assigned_waypoints.get(slave_ns, []):
                     next_waypoint = self.assigned_waypoints[slave_ns].pop(0)
-                    # Rimuovi il waypoint dal set di assegnazione globale
+                    # Remove the waypoint from the global assignment set
                     wp_id = (next_waypoint['label'], next_waypoint['x'], next_waypoint['y'])
                     self.assigned_waypoints_set.discard(wp_id)
                     self.send_waypoint(slave_ns, next_waypoint)
@@ -206,107 +186,114 @@ class BackupMasterNavigationNode(Node):
             self.get_logger().warn("No active slaves found. Waiting for slaves to register.")
             return
 
-        # Partiziona il grafo
+        # Clear assigned waypoints and assigned waypoints set
+        self.assigned_waypoints = {}
+        self.assigned_waypoints_set.clear()
+        # Note: Do not reset self.slave_busy here
+
+        # Partition the graph
         subgraphs = partition_graph(self.full_graph, num_slaves)
         self.get_logger().info(f"Partitioned the graph into {num_slaves} subgraphs.")
 
-        # Salva i sottografi in file
+        # Save the subgraphs to files
         subgraph_paths = save_subgraphs(subgraphs, self.output_dir)
         self.get_logger().info(f"Saved subgraphs to {subgraph_paths}")
 
-        # Assegna ogni sottografo a uno slave
-        slaves = sorted(self.active_slaves.keys())  # Ordinare per assegnazione deterministica
+        # Assign each subgraph to a slave
+        slaves = sorted(self.active_slaves.keys())  # Sort for deterministic assignment
         for idx, slave_ns in enumerate(slaves):
             subgraph_file = subgraph_paths[idx]
             waypoints = self.extract_waypoints(subgraph_file)
-            # Filtra i waypoint già assegnati
-            waypoints = [wp for wp in waypoints if (wp['label'], wp['x'], wp['y']) not in self.assigned_waypoints_set]
+            # Assign waypoints to the slave
             self.assigned_waypoints[slave_ns] = waypoints.copy()
-            # Aggiorna il set globale dei waypoint assegnati
+            # Update the global set of assigned waypoints
             for wp in waypoints:
                 wp_id = (wp['label'], wp['x'], wp['y'])
                 self.assigned_waypoints_set.add(wp_id)
-            self.slave_busy[slave_ns] = False  # Reset dello stato
+            # Maintain current busy status
+            if slave_ns not in self.slave_busy:
+                self.slave_busy[slave_ns] = False
             self.get_logger().info(f"Assigned {len(waypoints)} waypoints to {slave_ns}")
 
+        self.partitioning_done = True  # Set the partitioning flag
+
     def extract_waypoints(self, subgraph_file_path):
-        # Carica il sottografo dal file
+        # Same as in master node
         with open(subgraph_file_path, 'r') as f:
             data = json.load(f)
-        
-        # Estrai i waypoint in ordine (puoi personalizzare l'ordine se necessario)
+
         waypoints = []
         for node in data['nodes']:
             waypoint = {
                 'label': node['label'],
                 'x': node['x'],
                 'y': node['y'],
-                'orientation': node.get('orientation', 0.0)  # Default orientation
+                'orientation': node.get('orientation', 0.0)
             }
             waypoints.append(waypoint)
         return waypoints
 
     def send_waypoint(self, slave_ns, waypoint):
-        # Crea o recupera il publisher per lo slave
+        # Create or retrieve the publisher for the slave
         if slave_ns not in self.navigation_command_publishers:
-            publisher = self.create_publisher(Waypoint, f"{slave_ns}/navigation_commands", 10)
+            publisher = self.create_publisher(String, f"{slave_ns}/navigation_commands", 10)
             self.navigation_command_publishers[slave_ns] = publisher
             self.get_logger().info(f"Created publisher for slave: {slave_ns}")
         else:
             publisher = self.navigation_command_publishers[slave_ns]
 
-        # Crea il messaggio Waypoint
-        waypoint_msg = Waypoint()
-        waypoint_msg.label = waypoint['label']
-        waypoint_msg.x = waypoint['x']
-        waypoint_msg.y = waypoint['y']
-        waypoint_msg.orientation = waypoint['orientation']
+        # Create the message as JSON
+        waypoint_msg = {
+            'label': waypoint['label'],
+            'x': waypoint['x'],
+            'y': waypoint['y'],
+            'orientation': waypoint['orientation']
+        }
 
-        # Pubblica il waypoint
-        publisher.publish(waypoint_msg)
+        msg = String()
+        msg.data = json.dumps(waypoint_msg)
+
+        # Publish the waypoint
+        publisher.publish(msg)
         self.get_logger().info(f"Sent waypoint to {slave_ns}: {waypoint_msg}")
-        
-        # Segna lo slave come occupato
+
+        # Mark the slave as busy
         self.slave_busy[slave_ns] = True
 
     def navigation_status_callback(self, msg):
         if not self.is_active_master:
-            return  # Solo il master attivo gestisce i feedback
-        # Gestisci il feedback dai nodi slave
-        self.get_logger().info(f"Received status from {msg.robot_namespace}: {msg.status}, Waypoint: {msg.current_waypoint}, Time Taken: {msg.time_taken}s, Error: {msg.error_message}")
+            return  # Only the active master handles feedback
+        data = json.loads(msg.data)
+        slave_ns = data['robot_namespace']
+        status = data['status']
+        current_waypoint = data['current_waypoint']
+        time_taken = data['time_taken']
+        error_message = data['error_message']
 
-        if msg.status == "reached":
-            # Segna lo slave come disponibile per il prossimo waypoint
-            self.slave_busy[msg.robot_namespace] = False
-        elif msg.status == "error":
-            # Gestisci gli errori, ad esempio riprogrammando i waypoint
-            self.get_logger().error(f"Slave {msg.robot_namespace} encountered an error: {msg.error_message}")
-            self.slave_busy[msg.robot_namespace] = False
-            # Potresti riprogrammare i waypoint rimanenti
+        self.get_logger().info(f"Received status from {slave_ns}: {status}, Waypoint: {current_waypoint}, Time Taken: {time_taken}s, Error: {error_message}")
+
+        if status == "reached":
+            # Mark the slave as available for the next waypoint
+            self.slave_busy[slave_ns] = False
+        elif status == "error":
+            # Handle errors, e.g., by reassigning waypoints
+            self.get_logger().error(f"Slave {slave_ns} encountered an error: {error_message}")
+            self.slave_busy[slave_ns] = False
+            # Optionally, repartition and reassign waypoints
             self.repartition_and_assign_waypoints()
 
 def main(args=None):
     rclpy.init(args=args)
-
-    from argparse import ArgumentParser
-
-    parser = ArgumentParser()
-    parser.add_argument('--graph_path', type=str, required=True, help='Path to the full graph JSON file')
-    parser.add_argument('--output_dir', type=str, default='/tmp', help='Directory to save subgraphs')
-    args, unknown = parser.parse_known_args()
-
-    backup_master_node = BackupMasterNavigationNode(
-        graph_path=args.graph_path,
-        output_dir=args.output_dir
-    )
-
+    node = BackupMasterNavigationNode()
     try:
-        rclpy.spin(backup_master_node)
+        rclpy.spin(node)
     except KeyboardInterrupt:
         pass
-    finally:
-        backup_master_node.destroy_node()
-        rclpy.shutdown()
+    node.destroy_node()
+    rclpy.shutdown()
 
 if __name__ == '__main__':
     main()
+
+
+#ros2 run fleet_turtlebot4_navigation backup_master_navigation_node --ros-args -p graph_path:=/path/to/your/graph.json -p output_dir:=/tmp

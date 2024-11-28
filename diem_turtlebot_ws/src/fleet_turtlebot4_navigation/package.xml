@@ -1,0 +1,29 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>fleet_turtlebot4_navigation</name>
+  <version>0.0.1</version>
+  <description>Fleet Turtlebot4 Navigation Package</description>
+  <maintainer email="bennibeniamino@gmail.com">beniamino</maintainer>
+  <license>Apache-2.0</license>
+
+  <!-- Build tool dependencies -->
+  <buildtool_depend>ament_python</buildtool_depend>
+
+  <!-- Build dependencies -->
+  <build_depend>rclpy</build_depend>
+  <build_depend>std_msgs</build_depend>
+
+  <!-- Execution dependencies -->
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+
+  <!-- Test dependencies -->
+  <test_depend>ament_copyright</test_depend>
+  <test_depend>ament_flake8</test_depend>
+  <test_depend>ament_pep257</test_depend>
+  <test_depend>python3-pytest</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

@@ -1,4 +1,4 @@
-# multi_nav_pkg/graph_partitioning.py
+# fleet_turtlebot4_navigation/graph_partitioning.py
 
 import os
 import json
