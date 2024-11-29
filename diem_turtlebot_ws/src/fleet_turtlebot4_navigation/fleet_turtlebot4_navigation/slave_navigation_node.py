@@ -7,10 +7,11 @@ import json
 import time
 import argparse
 import math
-from turtlebot4_navigation.turtlebot4_navigator import TurtleBot4Navigator
+from turtlebot4_navigation.turtlebot4_navigator import TurtleBot4Navigator, TaskResult
 
 class SlaveNavigationNode(Node):
     def __init__(self, robot_namespace, initial_x, initial_y, initial_orientation_str):
+        # Inizializza il nodo senza specificare il namespace
         super().__init__('slave_navigation_node')
 
         self.robot_namespace = robot_namespace
@@ -20,21 +21,21 @@ class SlaveNavigationNode(Node):
         self.initial_orientation = self.orientation_conversion(initial_orientation_str)
 
         # Publisher per registrare lo slave con il master
-        self.slave_registration_publisher = self.create_publisher(String, 'slave_registration', 10)
+        self.slave_registration_publisher = self.create_publisher(String, '/slave_registration', 10)
 
         # Publisher per inviare la posizione iniziale al master
-        self.initial_position_publisher = self.create_publisher(String, 'slave_initial_positions', 10)
+        self.initial_position_publisher = self.create_publisher(String, '/slave_initial_positions', 10)
 
         # Subscriber per ricevere i comandi di navigazione dal master
         self.navigation_commands_subscriber = self.create_subscription(
             String,
-            f"{self.robot_namespace}/navigation_commands",
+            'navigation_commands',
             self.navigation_commands_callback,
             10
         )
 
         # Publisher per inviare lo stato della navigazione al master
-        self.status_publisher = self.create_publisher(String, 'navigation_status', 10)
+        self.status_publisher = self.create_publisher(String, '/navigation_status', 10)
 
         # Timer per pubblicare regolarmente i messaggi di registrazione
         self.registration_timer = self.create_timer(1.0, self.publish_registration)
@@ -42,7 +43,7 @@ class SlaveNavigationNode(Node):
         # Pubblica la posizione iniziale una volta all'avvio
         self.publish_initial_position()
 
-        # Inizializza la classe TurtleBot4Navigator per controllare il robot
+        # Inizializza la classe TurtleBot4Navigator senza parametri aggiuntivi
         self.navigator = TurtleBot4Navigator()
 
         # Log dell'inizializzazione dello slave
@@ -99,12 +100,19 @@ class SlaveNavigationNode(Node):
         # Inizia il tempo per la navigazione
         self.start_time = time.time()
 
-        # Inizia la navigazione verso il goal pose
-        result = self.navigator.startToPose(goal_pose)
+        try:
+            # Verifica se l'action server è disponibile
+            if not self.navigator.nav_to_pose_client.wait_for_server(timeout_sec=5.0):
+                error_message = f"Action server not available for {label}."
+                self.get_logger().error(error_message)
+                self.publish_status("error", error_message, 0.0, label)
+                return
 
-        if result is None:
-            # Se la navigazione non è riuscita ad iniziare, logga un errore e pubblica lo stato al master
-            error_message = f"Failed to send goal to {label}."
+            # Inizia la navigazione verso il goal pose
+            self.navigator.startToPose(goal_pose)
+        except Exception as e:
+            # Se si verifica un'eccezione, logga un errore e pubblica lo stato al master
+            error_message = f"Exception occurred while sending goal to {label}: {e}"
             self.get_logger().error(error_message)
             self.publish_status("error", error_message, 0.0, label)
             return
@@ -120,7 +128,7 @@ class SlaveNavigationNode(Node):
         # Controlla il risultato della navigazione
         nav_result = self.navigator.getResult()
 
-        if nav_result == 0:
+        if nav_result == TaskResult.SUCCEEDED:
             # Navigazione riuscita
             self.get_logger().info(f"[{self.robot_namespace}] Reached {label} in {time_taken:.2f} seconds.")
             self.publish_status("reached", "", time_taken, label)

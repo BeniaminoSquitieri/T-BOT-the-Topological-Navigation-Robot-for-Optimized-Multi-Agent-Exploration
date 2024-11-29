@@ -12,10 +12,14 @@
   <!-- Build dependencies -->
   <build_depend>rclpy</build_depend>
   <build_depend>std_msgs</build_depend>
+  <build_depend>launch</build_depend>
+  <build_depend>launch_ros</build_depend>
 
   <!-- Execution dependencies -->
-  <exec_depend>rclpy</exec_depend>
+  <exec_depend>rclpy</exec_depend> 
   <exec_depend>std_msgs</exec_depend>
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
 
   <!-- Test dependencies -->
   <test_depend>ament_copyright</test_depend>
