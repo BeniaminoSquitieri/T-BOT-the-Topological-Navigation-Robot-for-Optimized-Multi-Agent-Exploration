@@ -18,6 +18,9 @@ class SlaveState:
         self.assigned_waypoints = []  # Lista di waypoint assegnati
         self.current_waypoint_index = 0  # Indice del prossimo waypoint da assegnare
         self.last_seen_time = 0.0  # Ultima volta che lo slave ha comunicato
+        self.initial_x = None  # Posizione iniziale X
+        self.initial_y = None  # Posizione iniziale Y
+        self.initial_orientation = None  # Orientamento iniziale
 
 class MasterNavigationNode(Node):
     def __init__(self):
@@ -26,7 +29,7 @@ class MasterNavigationNode(Node):
         # Dichiarazione dei parametri ROS 2 con valori predefiniti
         self.declare_parameter('graph_path', '')
         self.declare_parameter('check_interval', 2.0)
-        self.declare_parameter('timeout', 10.0)  # Timeout per slave inattivi in secondi
+        self.declare_parameter('timeout', 150.0)  # Timeout per slave inattivi in secondi
 
         # Recupero dei valori dei parametri
         self.graph_path = self.get_parameter('graph_path').get_parameter_value().string_value
@@ -38,7 +41,7 @@ class MasterNavigationNode(Node):
         self.get_logger().info("Master node loaded the graph.")
 
         # Stampa di tutti i nodi del grafo caricato
-        # self.print_all_graph_nodes()
+        self.print_all_graph_nodes()  # Decommenta questa linea per verificare i nodi
 
         # Inizializzazione dei subscriber per la registrazione degli slave e le posizioni iniziali
         self.slave_registration_subscriber = self.create_subscription(
@@ -141,7 +144,11 @@ class MasterNavigationNode(Node):
         current_time = self.get_clock().now().seconds_nanoseconds()[0] + self.get_clock().now().seconds_nanoseconds()[1] * 1e-9
 
         if slave_ns in self.slaves:
-            self.slaves[slave_ns].last_seen_time = current_time
+            slave = self.slaves[slave_ns]
+            slave.last_seen_time = current_time
+            slave.initial_x = initial_x
+            slave.initial_y = initial_y
+            slave.initial_orientation = initial_orientation
             self.get_logger().info(
                 f"Received initial position from {slave_ns}: "
                 f"({initial_x}, {initial_y}, {initial_orientation} radians)"
@@ -152,6 +159,9 @@ class MasterNavigationNode(Node):
             publisher = self.create_publisher(String, f"{slave_ns}/navigation_commands", 10)
             slave_state = SlaveState(slave_ns, publisher)
             slave_state.last_seen_time = current_time
+            slave_state.initial_x = initial_x
+            slave_state.initial_y = initial_y
+            slave_state.initial_orientation = initial_orientation
             self.slaves[slave_ns] = slave_state
             self.get_logger().info(f"Created publisher for slave: {slave_ns}")
 
@@ -238,9 +248,17 @@ class MasterNavigationNode(Node):
             self.partitioning_done = False
             return
 
-        # Partiziona il grafo in sottografi basati sul numero di slave
+        # Raccolta delle posizioni iniziali degli slave
+        start_positions = []
+        for slave in self.slaves.values():
+            if slave.initial_x is not None and slave.initial_y is not None:
+                start_positions.append({'x': slave.initial_x, 'y': slave.initial_y})
+            else:
+                self.get_logger().warn(f"Slave {slave.slave_ns} non ha una posizione iniziale valida.")
+
+        # Partiziona il grafo in sottografi basati sul numero di slave e le loro posizioni iniziali
         try:
-            subgraphs = partition_graph(self.full_graph, num_slaves)
+            subgraphs = partition_graph(self.full_graph, num_slaves, start_positions=start_positions)
             self.get_logger().info(f"Partitioned the graph into {len(subgraphs)} subgraphs.")
         except ValueError as e:
             self.get_logger().error(f"Failed to partition graph: {e}")
@@ -258,6 +276,25 @@ class MasterNavigationNode(Node):
         for idx, slave_ns in enumerate(slaves):
             subgraph = subgraphs[idx]
             waypoints = self.extract_waypoints(subgraph)
+
+            # Verifica che lo slave abbia una posizione iniziale
+            slave = self.slaves[slave_ns]
+            if slave.initial_x is not None and slave.initial_y is not None:
+                # Assicurati che il primo waypoint sia la posizione iniziale dello slave
+                # Trova il waypoint più vicino alla posizione iniziale
+                min_distance = float('inf')
+                initial_wp = None
+                for wp in waypoints:
+                    distance = math.hypot(wp['x'] - slave.initial_x, wp['y'] - slave.initial_y)
+                    if distance < min_distance:
+                        min_distance = distance
+                        initial_wp = wp
+                if initial_wp:
+                    # Riordina i waypoints in modo che initial_wp sia il primo
+                    waypoints = [initial_wp] + [wp for wp in waypoints if wp != initial_wp]
+            else:
+                self.get_logger().warn(f"Slave {slave_ns} lacks initial position data.")
+
             # Calcola il percorso DCPP (circuito Euleriano) per il sottografo
             dcpp_route = calculate_dcpp_route(waypoints, subgraph, self.get_logger())
             # Assegna il percorso allo slave
@@ -289,7 +326,7 @@ class MasterNavigationNode(Node):
     def assign_route_to_slave(self, slave_ns, route):
         """
         Assegna un percorso di waypoint a uno slave specifico.
-
+        
         Args:
             slave_ns (str): Namespace dello slave robot.
             route (list of dict): Lista ordinata di waypoint.
@@ -301,6 +338,11 @@ class MasterNavigationNode(Node):
         slave = self.slaves[slave_ns]
         slave.assigned_waypoints = route.copy()
         slave.current_waypoint_index = 0
+
+        # Log dettagliato del percorso assegnato
+        self.get_logger().info(f"Percorso DCPP assegnato a {slave_ns}:")
+        for wp in route:
+            self.get_logger().info(f" - {wp['label']} at ({wp['x']}, {wp['y']}) with orientation {wp['orientation']} radians")
 
         # Assegna il primo waypoint
         self.assign_next_waypoint(slave)
@@ -358,4 +400,4 @@ if __name__ == '__main__':
     main()
 
 
-#ros2 run fleet_turtlebot4_navigation master_navigation_node --ros-args -p graph_path:=/home/beniamino/turtlebot4/diem_turtlebot_ws/src/fleet_turtlebot4_navigation/map/navigation_hardware_limitation.json 
+#ros2 run fleet_turtlebot4_navigation master_navigation_node --ros-args -p graph_path:=/home/beniamino/turtlebot4/diem_turtlebot_ws/src/fleet_turtlebot4_navigation/map/navigation_hardware_limitation.json

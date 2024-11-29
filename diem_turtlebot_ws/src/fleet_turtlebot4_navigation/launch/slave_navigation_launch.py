@@ -56,3 +56,5 @@ def generate_launch_description():
             ],
         ),
     ])
+
+#ros2 launch fleet_turtlebot4_navigation slave_navigation_launch.py     robot_namespace:=robot_111     initial_x:=-2.3077550000000002     initial_y:=-0.5235470000000007     initial_orientation:=SOUTH     robot_id:=111

@@ -28,6 +28,7 @@ def calculate_dcpp_route(waypoints, subgraph, logger):
 
     # Calcola il circuito Euleriano
     try:
+        # Try to find an Eulerian circuit starting from the first waypoint
         euler_circuit = list(nx.eulerian_circuit(G, source=waypoints[0]['label']))
         route_labels = [waypoints[0]['label']]
         for u, v in euler_circuit:
@@ -40,9 +41,6 @@ def calculate_dcpp_route(waypoints, subgraph, logger):
     # Mappa i label dei nodi al dizionario dei waypoint
     label_to_wp = {wp['label']: wp for wp in waypoints}
     ordered_route = [label_to_wp[label] for label in route_labels if label in label_to_wp]
-
-    # Log del numero di nodi nel percorso
-    logger.info(f"Calculated DCPP route with {len(ordered_route)} nodes.")
 
     return ordered_route
 

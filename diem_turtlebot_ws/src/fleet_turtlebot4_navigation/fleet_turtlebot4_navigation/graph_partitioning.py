@@ -9,66 +9,56 @@ from sklearn.cluster import KMeans
 
 def load_full_graph(graph_path):
     """
-    Loads the full graph from a JSON file and returns a NetworkX DiGraph (directed graph).
+    Carica il grafo completo da un file JSON e restituisce un NetworkX DiGraph (grafo diretto).
     """
-    # Open the JSON file containing the graph data
     with open(graph_path, 'r') as f:
         data = json.load(f)
 
-    # Create an empty directed NetworkX graph
     full_graph = nx.DiGraph()
 
-    # Add nodes to the graph with their attributes
     for node in data['nodes']:
-        label = node['label']  # Get the node label (e.g., "node_1")
-        x = node['x']          # Get the x-coordinate of the node
-        y = node['y']          # Get the y-coordinate of the node
-        full_graph.add_node(label, x=x, y=y)  # Add the node with its attributes
+        label = node['label']
+        x = node['x']
+        y = node['y']
+        orientation = node.get('orientation', 0.0)
+        full_graph.add_node(label, x=x, y=y, orientation=orientation)
 
-    # Add edges to the graph, considering their direction and calculating weights
     for edge in data['edges']:
-        u = edge['from']  # Source node of the edge
-        v = edge['to']    # Target node of the edge
-        # Calculate Euclidean distance between the nodes
-        x1, y1 = full_graph.nodes[u]['x'], full_graph.nodes[u]['y']
-        x2, y2 = full_graph.nodes[v]['x'], full_graph.nodes[v]['y']
-        weight = math.hypot(x2 - x1, y2 - y1)
-        # Add directed edge with weight
+        u = edge['from']
+        v = edge['to']
+        weight = edge.get('weight', 1.0)
         full_graph.add_edge(u, v, weight=weight)
-        # Optionally, you can store the direction if needed
-        if 'direction' in edge:
-            full_graph[u][v]['direction'] = edge['direction']
 
     return full_graph
 
 def partition_graph(full_graph, num_partitions, start_positions=None, capacities=None):
     """
-    Partitions the graph into subgraphs based on spatial clustering and robot capacities,
-    considering the starting positions of the robots.
+    Partiziona il grafo in sottografi connessi basati su K-Means clustering,
+    utilizzando le posizioni iniziali dei robot come centroidi se fornite.
 
     Args:
-        full_graph (nx.DiGraph): The original directed graph.
-        num_partitions (int): Number of partitions/robots.
-        start_positions (list of dict, optional): List of starting positions with 'x' and 'y'.
-        capacities (list of int, optional): List of capacities for each robot.
+        full_graph (nx.DiGraph): Il grafo completo.
+        num_partitions (int): Numero di partizioni/robot.
+        start_positions (list of dict, optional): Lista di posizioni iniziali con 'x' e 'y'.
+        capacities (list of int, optional): Lista di capacità per ciascun robot.
 
     Returns:
-        list of nx.DiGraph: List of subgraphs.
+        list of nx.DiGraph: Lista di sottografi.
     """
     node_labels = list(full_graph.nodes())
     positions = np.array([[full_graph.nodes[node]['x'], full_graph.nodes[node]['y']] for node in node_labels])
 
     if start_positions and len(start_positions) == num_partitions:
-        # Assign clusters based on proximity to starting positions
+        # Utilizza le posizioni iniziali come centroidi per K-Means
         centroids = np.array([[pos['x'], pos['y']] for pos in start_positions])
         kmeans = KMeans(n_clusters=num_partitions, init=centroids, n_init=1)
         labels = kmeans.fit_predict(positions)
     else:
-        # Fallback to K-Means clustering
+        # Fallback a K-Means standard
         kmeans = KMeans(n_clusters=num_partitions, random_state=42)
         labels = kmeans.fit_predict(positions)
 
-    # Group nodes into clusters based on K-Means labels
+    # Raggruppa i nodi in cluster basati sui label di K-Means
     clusters = {}
     for node_label, cluster_label in zip(node_labels, labels):
         clusters.setdefault(cluster_label, set()).add(node_label)
@@ -105,16 +95,18 @@ def partition_graph(full_graph, num_partitions, start_positions=None, capacities
         if not nx.is_strongly_connected(subgraph):
             subgraph = make_subgraph_strongly_connected(subgraph, full_graph)
 
-        # Rende il sottografo Euleriano se necessario
+        # Rendi il sottografo Euleriano
         subgraph = make_subgraph_eulerian(subgraph, full_graph)
 
         # Limita il numero di nodi in base alla capacità
         if capacity < len(subgraph.nodes()):
-            # Implementa una logica per limitare i nodi, ad esempio rimuovendo quelli più lontani
-            # Questo è un esempio semplice; potrebbe essere migliorato
+            # Logica per limitare i nodi, ad esempio rimuovendo quelli più vicini al centroide
             sorted_nodes = sorted(subgraph.nodes(data=True), key=lambda x: (x[1]['x'], x[1]['y']))
             limited_nodes = [node[0] for node in sorted_nodes[:capacity]]
             subgraph = subgraph.subgraph(limited_nodes).copy()
+
+        # Log dei nodi nel sottografo
+        print(f"Subgraph {cluster_idx} contiene {len(subgraph.nodes())} nodi: {list(subgraph.nodes())}")
 
         subgraphs.append(subgraph)
 
@@ -122,32 +114,30 @@ def partition_graph(full_graph, num_partitions, start_positions=None, capacities
 
 def duplicate_common_edges(subgraph, full_graph, cluster_idx):
     """
-    Duplicates edges that are common between subgraphs to ensure each subgraph
-    can form a closed tour independently.
+    Duplica gli archi che sono comuni tra sottografi per garantire che ogni sottografo
+    possa formare un tour chiuso indipendentemente.
     """
-    # Mark all edges in the subgraph as belonging to the current cluster
-    for u, v in subgraph.edges():
-        subgraph[u][v]['cluster'] = cluster_idx  # Add cluster identifier
-
+    # Implementa la logica per duplicare gli archi comuni se necessario
+    # Al momento, questa funzione non aggiunge nulla. Puoi implementarla secondo le tue esigenze.
     return subgraph
 
 def make_subgraph_strongly_connected(subgraph, full_graph):
     """
-    Adds edges from the full graph to the subgraph to make it strongly connected.
+    Aggiunge archi dal grafo completo al sottografo per renderlo fortemente connesso.
     """
-    # Find strongly connected components
+    # Trova le componenti fortemente connesse
     sccs = list(nx.strongly_connected_components(subgraph))
     if len(sccs) == 1:
-        return subgraph  # Already strongly connected
+        return subgraph  # Già fortemente connesso
 
-    # Build a simple cycle through the SCCs
+    # Costruisci un semplice ciclo attraverso le SCC
     scc_list = [scc for scc in sccs]
     num_scc = len(scc_list)
     for i in range(num_scc):
         scc_from = scc_list[i]
         scc_to = scc_list[(i + 1) % num_scc]
 
-        # Find nodes to connect scc_from to scc_to
+        # Trova nodi da connettere
         added_edge = False
         for u in scc_from:
             for v in scc_to:
@@ -158,51 +148,50 @@ def make_subgraph_strongly_connected(subgraph, full_graph):
             if added_edge:
                 break
         if not added_edge:
-            # If no direct edge exists, try to find a path
+            # Se non esiste un arco diretto, prova a trovare un percorso
             try:
                 path = nx.shortest_path(full_graph, source=list(scc_from)[0], target=list(scc_to)[0])
-                for u, v in zip(path[:-1], path[1:]):
-                    if not subgraph.has_node(u):
-                        subgraph.add_node(u, **full_graph.nodes[u])
-                    if not subgraph.has_node(v):
-                        subgraph.add_node(v, **full_graph.nodes[v])
-                    if not subgraph.has_edge(u, v):
-                        subgraph.add_edge(u, v, **full_graph.get_edge_data(u, v))
+                for s, t in zip(path[:-1], path[1:]):
+                    if not subgraph.has_node(s):
+                        subgraph.add_node(s, **full_graph.nodes[s])
+                    if not subgraph.has_node(t):
+                        subgraph.add_node(t, **full_graph.nodes[t])
+                    if not subgraph.has_edge(s, t):
+                        subgraph.add_edge(s, t, **full_graph.get_edge_data(s, t))
             except nx.NetworkXNoPath:
-                print("Unable to find path to make subgraph strongly connected.")
+                print(f"Impossibile trovare un percorso da {list(scc_from)[0]} a {list(scc_to)[0]} per rendere il sottografo fortemente connesso.")
     return subgraph
 
 def make_subgraph_eulerian(subgraph, full_graph):
     """
-    Modifies the subgraph to make it Eulerian by balancing in-degree and out-degree.
+    Modifica il sottografo per renderlo Euleriano bilanciando in-degree e out-degree.
     """
-    # First, check if the subgraph is Eulerian
+    # Verifica se il sottografo è già Euleriano
     if nx.is_eulerian(subgraph):
         return subgraph
 
-    # Calculate the imbalance of in-degree and out-degree for each node
+    # Calcola l'imbalanced per ogni nodo
     imbalance = {}
     for node in subgraph.nodes():
         in_deg = subgraph.in_degree(node)
         out_deg = subgraph.out_degree(node)
         imbalance[node] = out_deg - in_deg
 
-    # Nodes with positive imbalance need additional incoming edges
-    # Nodes with negative imbalance need additional outgoing edges
-
+    # Nodi con imbalance positivo necessitano di ulteriori incoming edges
+    # Nodi con imbalance negativo necessitano di ulteriori outgoing edges
     positive_imbalance_nodes = [node for node, imbal in imbalance.items() if imbal > 0]
     negative_imbalance_nodes = [node for node, imbal in imbalance.items() if imbal < 0]
 
-    # Pair nodes to balance the degrees
+    # Accoppia i nodi per bilanciare gli imbalances
     while positive_imbalance_nodes and negative_imbalance_nodes:
         u = positive_imbalance_nodes.pop()
         v = negative_imbalance_nodes.pop()
 
-        # Add edge from v to u
+        # Aggiungi arco da v a u
         if full_graph.has_edge(v, u):
             subgraph.add_edge(v, u, **full_graph.get_edge_data(v, u))
         else:
-            # If the edge doesn't exist in the full graph, find a path
+            # Se l'arco non esiste, trova un percorso e aggiungi gli archi necessari
             try:
                 path = nx.shortest_path(full_graph, source=v, target=u)
                 for s, t in zip(path[:-1], path[1:]):
@@ -213,13 +202,13 @@ def make_subgraph_eulerian(subgraph, full_graph):
                     if not subgraph.has_edge(s, t):
                         subgraph.add_edge(s, t, **full_graph.get_edge_data(s, t))
             except nx.NetworkXNoPath:
-                print(f"Cannot find path from {v} to {u} to balance degrees.")
+                print(f"Impossibile trovare un percorso da {v} a {u} per bilanciare gli imbalances.")
 
     return subgraph
 
 def save_subgraphs(subgraphs, output_dir):
     """
-    Saves each subgraph to a JSON file in the specified output directory.
+    Salva ciascun sottografo in un file JSON nella directory di output specificata.
     """
     subgraph_paths = []
     for idx, subgraph in enumerate(subgraphs):
@@ -231,7 +220,6 @@ def save_subgraphs(subgraphs, output_dir):
             "edges": []
         }
 
-        # Add edges, including duplication info if applicable
         for u, v, data in subgraph.edges(data=True):
             edge_info = {
                 "from": u,
@@ -242,11 +230,11 @@ def save_subgraphs(subgraphs, output_dir):
                 edge_info['cluster'] = data['cluster']
             subgraph_data["edges"].append(edge_info)
 
-        # Write the subgraph to a JSON file
+        # Scrivi il sottografo in un file JSON
         subgraph_file_path = os.path.join(output_dir, f"subgraph_{idx}.json")
         with open(subgraph_file_path, 'w') as f:
             json.dump(subgraph_data, f, indent=4)
 
-        subgraph_paths.append(subgraph_file_path)  # Track saved file paths
+        subgraph_paths.append(subgraph_file_path)
 
     return subgraph_paths
