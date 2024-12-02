@@ -68,10 +68,35 @@ def calculate_dcpp_route(waypoints, subgraph, logger):
     logger.info("Calculated DCPP route:")
     for wp in ordered_route:
         logger.info(f" - {wp['label']} at ({wp['x']}, {wp['y']}) with orientation {wp['orientation']} radians")
+    
+    # **Aggiunta della stampa del percorso DCPP**
+    print("\n===== Calculated DCPP Route =====")
+    for idx, wp in enumerate(ordered_route, start=1):
+        print(f"Waypoint {idx}: {wp['label']} at ({wp['x']}, {wp['y']}), Orientation: {wp['orientation']} radians")
+    print("===== End of DCPP Route =====\n")
 
     return ordered_route
 
-def orientation_conversion(orientation_radians):
+def orientation_str_to_rad(orientation_str):
+    """
+    Converte un orientamento in formato stringa in radianti.
+
+    Args:
+        orientation_str (str): Orientamento come stringa ('NORTH', 'EAST', 'SOUTH', 'WEST').
+
+    Returns:
+        float: Orientamento in radianti.
+    """
+    orientations = {
+        'NORTH': 0.0,
+        'EAST': math.pi / 2,
+        'SOUTH': math.pi,
+        'WEST': 3 * math.pi / 2
+    }
+    orientation_rad = orientations.get(orientation_str.upper(), 0.0)
+    return orientation_rad
+
+def orientation_rad_to_str(orientation_radians):
     """
     Converts an angle in radians to the corresponding cardinal direction string.
 
@@ -83,9 +108,9 @@ def orientation_conversion(orientation_radians):
     """
     orientation_map = {
         0.0: 'NORTH',
-        -math.pi / 2: 'EAST',
+        math.pi / 2: 'EAST',
         math.pi: 'SOUTH',
-        math.pi / 2: 'WEST'
+        3 * math.pi / 2: 'WEST'
     }
 
     # Tolerance for matching angles

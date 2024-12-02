@@ -48,6 +48,33 @@ def load_full_graph(graph_path):
 
     return full_graph
 
+def load_full_graph_from_data(graph_data):
+    """
+    Carica un grafo NetworkX da un dizionario contenente nodi e archi.
+
+    Args:
+        graph_data (dict): Dizionario con 'nodes' e 'edges'.
+
+    Returns:
+        nx.DiGraph: Il grafo diretto caricato.
+    """
+    G = nx.DiGraph()
+
+    for node in graph_data['nodes']:
+        label = node['label']
+        x = node['x']
+        y = node['y']
+        orientation = node.get('orientation', 0.0)
+        G.add_node(label, x=x, y=y, orientation=orientation)
+
+    for edge in graph_data['edges']:
+        u = edge['from']
+        v = edge['to']
+        weight = edge.get('weight', 1.0)
+        G.add_edge(u, v, weight=weight)
+
+    return G
+
 def partition_graph(full_graph, num_partitions, start_positions=None, capacities=None):
     """
     Partiziona il grafo in sottografi connessi basati su K-Means clustering,
@@ -133,6 +160,14 @@ def duplicate_common_edges(subgraph, full_graph, cluster_idx):
     """
     Duplica gli archi che sono comuni tra sottografi per garantire che ogni sottografo
     possa formare un tour chiuso indipendentemente.
+
+    Args:
+        subgraph (nx.DiGraph): Il sottografo corrente.
+        full_graph (nx.DiGraph): Il grafo completo.
+        cluster_idx (int): Indice del cluster/sottografo.
+
+    Returns:
+        nx.DiGraph: Il sottografo aggiornato con archi duplicati, se necessario.
     """
     # Implementa la logica per duplicare gli archi comuni se necessario
     # Al momento, questa funzione non aggiunge nulla. Puoi implementarla secondo le tue esigenze.
@@ -141,6 +176,13 @@ def duplicate_common_edges(subgraph, full_graph, cluster_idx):
 def make_subgraph_strongly_connected(subgraph, full_graph):
     """
     Aggiunge archi dal grafo completo al sottografo per renderlo fortemente connesso.
+
+    Args:
+        subgraph (nx.DiGraph): Il sottografo da modificare.
+        full_graph (nx.DiGraph): Il grafo completo.
+
+    Returns:
+        nx.DiGraph: Il sottografo fortemente connesso.
     """
     # Trova le componenti fortemente connesse
     sccs = list(nx.strongly_connected_components(subgraph))
@@ -169,6 +211,10 @@ def make_subgraph_strongly_connected(subgraph, full_graph):
             try:
                 path = nx.shortest_path(full_graph, source=list(scc_from)[0], target=list(scc_to)[0])
                 for s, t in zip(path[:-1], path[1:]):
+                    if not subgraph.has_node(s):
+                        subgraph.add_node(s, **full_graph.nodes[s])
+                    if not subgraph.has_node(t):
+                        subgraph.add_node(t, **full_graph.nodes[t])
                     if not subgraph.has_edge(s, t):
                         subgraph.add_edge(s, t, **full_graph.get_edge_data(s, t))
             except nx.NetworkXNoPath:
@@ -179,12 +225,19 @@ def make_subgraph_strongly_connected(subgraph, full_graph):
 def make_subgraph_eulerian(subgraph, full_graph):
     """
     Modifica il sottografo per renderlo Euleriano bilanciando in-degree e out-degree.
+
+    Args:
+        subgraph (nx.DiGraph): Il sottografo da modificare.
+        full_graph (nx.DiGraph): Il grafo completo.
+
+    Returns:
+        nx.DiGraph: Il sottografo Euleriano.
     """
     # Verifica se il sottografo è già Euleriano
     if nx.is_eulerian(subgraph):
         return subgraph
 
-    # Calcola l'imbalanced per ogni nodo
+    # Calcola l'imbalance per ogni nodo
     imbalance = {}
     for node in subgraph.nodes():
         in_deg = subgraph.in_degree(node)
@@ -223,6 +276,13 @@ def make_subgraph_eulerian(subgraph, full_graph):
 def save_subgraphs(subgraphs, output_dir):
     """
     Salva ciascun sottografo in un file JSON nella directory di output specificata.
+
+    Args:
+        subgraphs (list of nx.DiGraph): Lista di sottografi da salvare.
+        output_dir (str): Directory di output per i file JSON.
+
+    Returns:
+        list of str: Lista dei percorsi dei file salvati.
     """
     subgraph_paths = []
     for idx, subgraph in enumerate(subgraphs):
