@@ -6,7 +6,7 @@ from std_msgs.msg import String
 import json
 import math
 from .graph_partitioning import load_full_graph, partition_graph
-from .path_calculation import calculate_dcpp_route, orientation_conversion
+from .path_calculation import calculate_dcpp_route, orientation_rad_to_str  # Modificato
 import os
 
 class SlaveState:
@@ -449,7 +449,7 @@ class MasterNavigationNode(Node):
                 'label': waypoint['label'],
                 'x': waypoint['x'],
                 'y': waypoint['y'],
-                'orientation': orientation_conversion(waypoint['orientation'])
+                'orientation': orientation_rad_to_str(waypoint['orientation'])  # Modificato
             }
             msg = String()
             msg.data = json.dumps(waypoint_msg)
