@@ -9,13 +9,21 @@ from sklearn.cluster import KMeans
 
 def load_full_graph(graph_path):
     """
-    Carica il grafo completo da un file JSON e restituisce un NetworkX DiGraph (grafo diretto).
+    Carica il grafo completo da un file JSON, calcola la distanza euclidea per ogni arco
+    e imposta il peso dell'arco in base a questa distanza. Restituisce un NetworkX DiGraph (grafo diretto).
+    
+    Args:
+        graph_path (str): Percorso al file JSON contenente il grafo.
+    
+    Returns:
+        nx.DiGraph: Il grafo diretto caricato con pesi aggiornati.
     """
     with open(graph_path, 'r') as f:
         data = json.load(f)
 
     full_graph = nx.DiGraph()
 
+    # Aggiungi nodi al grafo
     for node in data['nodes']:
         label = node['label']
         x = node['x']
@@ -23,11 +31,20 @@ def load_full_graph(graph_path):
         orientation = node.get('orientation', 0.0)
         full_graph.add_node(label, x=x, y=y, orientation=orientation)
 
+    # Aggiungi archi al grafo con pesi basati sulla distanza euclidea
     for edge in data['edges']:
         u = edge['from']
         v = edge['to']
-        weight = edge.get('weight', 1.0)
-        full_graph.add_edge(u, v, weight=weight)
+        # Calcola la distanza euclidea tra i nodi u e v
+        if full_graph.has_node(u) and full_graph.has_node(v):
+            x1, y1 = full_graph.nodes[u]['x'], full_graph.nodes[u]['y']
+            x2, y2 = full_graph.nodes[v]['x'], full_graph.nodes[v]['y']
+            distance = math.hypot(x2 - x1, y2 - y1)
+        else:
+            # Se uno dei nodi non esiste, imposta una distanza predefinita
+            distance = edge.get('weight', 1.0)
+        
+        full_graph.add_edge(u, v, weight=distance)
 
     return full_graph
 
@@ -78,9 +95,8 @@ def partition_graph(full_graph, num_partitions, start_positions=None, capacities
         edges = []
         nodes = set(cluster_nodes)
         for u, v, data in full_graph.edges(data=True):
-            if u in cluster_nodes or v in cluster_nodes:
+            if u in cluster_nodes and v in cluster_nodes:
                 edges.append((u, v, data))
-                nodes.update([u, v])
 
         # Crea il sottografo
         subgraph = nx.DiGraph()
@@ -88,7 +104,7 @@ def partition_graph(full_graph, num_partitions, start_positions=None, capacities
             subgraph.add_node(node, **full_graph.nodes[node])
         subgraph.add_edges_from([(u, v, data) for u, v, data in edges])
 
-        # Duplica gli edge comuni
+        # Duplica gli archi comuni se necessario
         subgraph = duplicate_common_edges(subgraph, full_graph, cluster_idx)
 
         # Assicura che il sottografo sia fortemente connesso
@@ -101,7 +117,8 @@ def partition_graph(full_graph, num_partitions, start_positions=None, capacities
         # Limita il numero di nodi in base alla capacità
         if capacity < len(subgraph.nodes()):
             # Logica per limitare i nodi, ad esempio rimuovendo quelli più vicini al centroide
-            sorted_nodes = sorted(subgraph.nodes(data=True), key=lambda x: (x[1]['x'], x[1]['y']))
+            centroid = np.mean([[full_graph.nodes[node]['x'], full_graph.nodes[node]['y']] for node in cluster_nodes], axis=0)
+            sorted_nodes = sorted(subgraph.nodes(data=True), key=lambda x: math.hypot(x[1]['x'] - centroid[0], x[1]['y'] - centroid[1]))
             limited_nodes = [node[0] for node in sorted_nodes[:capacity]]
             subgraph = subgraph.subgraph(limited_nodes).copy()
 
@@ -137,29 +154,26 @@ def make_subgraph_strongly_connected(subgraph, full_graph):
         scc_from = scc_list[i]
         scc_to = scc_list[(i + 1) % num_scc]
 
-        # Trova nodi da connettere
-        added_edge = False
+        # Trova un arco dal grafo completo da scc_from a scc_to
+        found = False
         for u in scc_from:
             for v in scc_to:
                 if full_graph.has_edge(u, v):
                     subgraph.add_edge(u, v, **full_graph.get_edge_data(u, v))
-                    added_edge = True
+                    found = True
                     break
-            if added_edge:
+            if found:
                 break
-        if not added_edge:
+        if not found:
             # Se non esiste un arco diretto, prova a trovare un percorso
             try:
                 path = nx.shortest_path(full_graph, source=list(scc_from)[0], target=list(scc_to)[0])
                 for s, t in zip(path[:-1], path[1:]):
-                    if not subgraph.has_node(s):
-                        subgraph.add_node(s, **full_graph.nodes[s])
-                    if not subgraph.has_node(t):
-                        subgraph.add_node(t, **full_graph.nodes[t])
                     if not subgraph.has_edge(s, t):
                         subgraph.add_edge(s, t, **full_graph.get_edge_data(s, t))
             except nx.NetworkXNoPath:
-                print(f"Impossibile trovare un percorso da {list(scc_from)[0]} a {list(scc_to)[0]} per rendere il sottografo fortemente connesso.")
+                raise ValueError(f"Impossibile trovare un percorso da {list(scc_from)[0]} a {list(scc_to)[0]} per rendere il sottografo fortemente connesso.")
+
     return subgraph
 
 def make_subgraph_eulerian(subgraph, full_graph):
@@ -188,7 +202,7 @@ def make_subgraph_eulerian(subgraph, full_graph):
         v = negative_imbalance_nodes.pop()
 
         # Aggiungi arco da v a u
-        if full_graph.has_edge(v, u):
+        if subgraph.has_edge(v, u):
             subgraph.add_edge(v, u, **full_graph.get_edge_data(v, u))
         else:
             # Se l'arco non esiste, trova un percorso e aggiungi gli archi necessari
@@ -202,7 +216,7 @@ def make_subgraph_eulerian(subgraph, full_graph):
                     if not subgraph.has_edge(s, t):
                         subgraph.add_edge(s, t, **full_graph.get_edge_data(s, t))
             except nx.NetworkXNoPath:
-                print(f"Impossibile trovare un percorso da {v} a {u} per bilanciare gli imbalances.")
+                raise ValueError(f"Impossibile trovare un percorso da {v} a {u} per bilanciare gli imbalances.")
 
     return subgraph
 
