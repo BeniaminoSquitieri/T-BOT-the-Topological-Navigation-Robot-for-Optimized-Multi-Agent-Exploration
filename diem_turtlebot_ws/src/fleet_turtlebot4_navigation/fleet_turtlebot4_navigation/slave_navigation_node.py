@@ -10,63 +10,54 @@ import math
 import networkx as nx
 from turtlebot4_navigation.turtlebot4_navigator import TurtleBot4Navigator, TaskResult
 from .graph_partitioning import load_full_graph, partition_graph
-from .path_calculation import calculate_dcpp_route, orientation_conversion
-
-class SlaveState:
-    """
-    Class to manage the state of each slave robot.
-    """
-    def __init__(self, slave_ns, publisher):
-        self.slave_ns = slave_ns
-        self.publisher = publisher
-        self.assigned_waypoints = []  # List of assigned waypoints
-        self.current_waypoint_index = 0  # Index of the next waypoint to assign
-        self.last_seen_time = 0.0  # Last time the slave communicated
-        self.initial_x = None  # Initial X position
-        self.initial_y = None  # Initial Y position
-        self.initial_orientation = None  # Initial orientation
-        self.is_master = False  # Flag indicating if this slave has become the master
+from .path_calculation import calculate_dcpp_route
 
 class SlaveNavigationNode(Node):
     def __init__(self, robot_namespace, initial_x, initial_y, initial_orientation_str):
-        # Initialize the node without specifying the namespace
-        super().__init__('slave_navigation_node')
+        
+        # In __init__ del SlaveNavigationNode
+
 
         self.robot_namespace = robot_namespace
         self.initial_x = initial_x
         self.initial_y = initial_y
         self.initial_orientation_str = initial_orientation_str
         self.initial_orientation = self.orientation_conversion(initial_orientation_str)
+        super().__init__('slave_navigation_node')
 
-        # Publisher to register the slave with the master
+
+        # Publisher per registrare lo slave con il master
         self.slave_registration_publisher = self.create_publisher(String, '/slave_registration', 10)
 
-        # Publisher to send the initial position to the master
+        # Publisher per inviare la posizione iniziale al master
         self.initial_position_publisher = self.create_publisher(String, '/slave_initial_positions', 10)
 
-        # Subscriber to receive navigation commands from the master
+        # Esempio per il subscriber dei comandi di navigazione
         self.navigation_commands_subscriber = self.create_subscription(
             String,
-            '/navigation_commands',
+            'navigation_commands',  # Topic relativo
             self.navigation_commands_callback,
             10
         )
 
-        # Publisher to send navigation status to the master
-        self.status_publisher = self.create_publisher(String, '/navigation_status', 10)
+        # Fai lo stesso per tutti gli altri publisher e subscriber
 
-        # Publisher to send heartbeat messages to indicate this slave is active
-        self.heartbeat_publisher = self.create_publisher(String, '/slave_heartbeat', 10)
 
-        # Subscriber to receive heartbeat messages from the master
+        # Publisher per inviare lo stato della navigazione al master
+        self.status_publisher = self.create_publisher(String, 'navigation_status', 10)
+
+        # Publisher per inviare messaggi di heartbeat per indicare che questo slave è attivo
+        self.heartbeat_publisher = self.create_publisher(String, 'slave_heartbeat', 10)
+
+        # Subscriber per ricevere messaggi di heartbeat dal master
         self.master_heartbeat_subscriber = self.create_subscription(
             String,
-            '/master_heartbeat',
+            'master_heartbeat',
             self.master_heartbeat_callback,
             10
         )
 
-        # Subscriber to receive heartbeat messages from other slaves
+        # Subscriber per ricevere messaggi di heartbeat dagli altri slave
         self.slave_heartbeat_subscriber = self.create_subscription(
             String,
             '/slave_heartbeat',
@@ -74,7 +65,7 @@ class SlaveNavigationNode(Node):
             10
         )
 
-        # Subscriber to receive the navigation graph from the master
+        # Subscriber per ricevere il grafo di navigazione dal master
         self.graph_subscriber = self.create_subscription(
             String,
             '/navigation_graph',
@@ -82,47 +73,51 @@ class SlaveNavigationNode(Node):
             10
         )
 
-        # Timer to regularly publish registration messages
+        # Timer per pubblicare regolarmente i messaggi di registrazione
         self.registration_timer = self.create_timer(1.0, self.publish_registration)
 
-        # Timer to regularly publish heartbeat messages
+        # Timer per pubblicare regolarmente i messaggi di heartbeat
         self.heartbeat_timer = self.create_timer(1.0, self.publish_heartbeat)
 
-        # Publish the initial position once at startup
+        # Pubblica la posizione iniziale una volta all'avvio
         self.publish_initial_position()
 
-        # Initialize the TurtleBot4Navigator
+        # Inizializza il TurtleBot4Navigator
         self.navigator = TurtleBot4Navigator()
 
-        # Initialize variables for master election
+        # Inizializza le variabili per l'elezione del master
         self.master_alive = False
         self.last_master_heartbeat = time.time()
-        self.heartbeat_timeout = 5.0  # Seconds to wait before considering the master dead
+        self.heartbeat_timeout = 5.0  # Secondi da attendere prima di considerare il master morto
 
-        # List of active slaves (namespace and last heartbeat)
-        self.active_slaves = {}  # Key: slave_ns, Value: last_seen_time
+        # Lista degli slave attivi (namespace e ultimo heartbeat)
+        self.active_slaves = {}  # Chiave: slave_ns, Valore: last_seen_time
 
-        # Initialize the navigation graph
+        # Inizializza il grafo di navigazione
         self.navigation_graph = None
 
-        # Log the initialization of the slave
+        # Log dell'inizializzazione dello slave
         self.get_logger().info(f"[{self.robot_namespace}] Slave node initialized at ({self.initial_x}, {self.initial_y}) with orientation {self.initial_orientation_str} ({self.initial_orientation} radians).")
 
-        # Timer to check for master heartbeat timeout
+        # Timer per controllare il timeout del heartbeat del master
         self.master_check_timer = self.create_timer(1.0, self.check_master_alive)
 
-        # Timer to check for slave heartbeats and maintain the active_slaves list
+        # Timer per controllare gli heartbeat degli slave e mantenere la lista active_slaves
         self.slave_check_timer = self.create_timer(2.0, self.check_slave_alive)
 
-        # Initialize the master role flag
+        # Inizializza il flag del ruolo di master
         self.is_master = False
 
-        # Initialize the graph partitioning and waypoint assignment if this node becomes master
+        # Inizializza la partizione del grafo e l'assegnazione dei waypoint se questo nodo diventa master
         self.master_graph_partitioned = False
+
+        # Variabili per gestire i waypoint assegnati
+        self.assigned_waypoints = []
+        self.current_waypoint_index = 0
 
     def publish_registration(self):
         """
-        Publishes a registration message to the master to indicate that this slave is active.
+        Pubblica un messaggio di registrazione al master per indicare che questo slave è attivo.
         """
         msg = String()
         msg.data = self.robot_namespace
@@ -131,13 +126,13 @@ class SlaveNavigationNode(Node):
 
     def publish_initial_position(self):
         """
-        Publishes the initial position of the slave to the master.
+        Pubblica la posizione iniziale dello slave al master.
         """
         initial_position = {
             'robot_namespace': self.robot_namespace,
             'x': self.initial_x,
             'y': self.initial_y,
-            'orientation': self.initial_orientation_str  # Send orientation as a string
+            'orientation': self.initial_orientation_str  # Invia l'orientamento come stringa
         }
         msg = String()
         msg.data = json.dumps(initial_position)
@@ -146,7 +141,7 @@ class SlaveNavigationNode(Node):
 
     def publish_heartbeat(self):
         """
-        Publishes a heartbeat message to indicate that this slave is active.
+        Pubblica un messaggio di heartbeat per indicare che questo slave è attivo.
         """
         heartbeat_msg = String()
         heartbeat_msg.data = self.robot_namespace
@@ -155,8 +150,8 @@ class SlaveNavigationNode(Node):
 
     def master_heartbeat_callback(self, msg):
         """
-        Callback function triggered when a master heartbeat message is received.
-        Updates the master heartbeat timestamp.
+        Callback attivato quando viene ricevuto un messaggio di heartbeat dal master.
+        Aggiorna il timestamp dell'heartbeat del master.
         """
         self.master_alive = True
         self.last_master_heartbeat = time.time()
@@ -164,8 +159,8 @@ class SlaveNavigationNode(Node):
 
     def slave_heartbeat_callback(self, msg):
         """
-        Callback function triggered when a slave heartbeat message is received.
-        Updates the active_slaves list.
+        Callback attivato quando viene ricevuto un messaggio di heartbeat da un altro slave.
+        Aggiorna la lista degli active_slaves.
         """
         slave_ns = msg.data.strip()
         current_time = time.time()
@@ -175,22 +170,22 @@ class SlaveNavigationNode(Node):
 
     def check_master_alive(self):
         """
-        Checks if the master is alive based on the last received heartbeat.
-        If the master is considered dead, initiates master election.
+        Controlla se il master è attivo in base all'ultimo heartbeat ricevuto.
+        Se il master è considerato morto, avvia l'elezione di un nuovo master.
         """
         current_time = time.time()
         if self.master_alive:
-            # Reset the flag; it will be set again if a heartbeat is received
+            # Reset del flag; verrà impostato di nuovo se un heartbeat viene ricevuto
             self.master_alive = False
         else:
-            # No heartbeat received since last check
+            # Nessun heartbeat ricevuto dall'ultimo controllo
             if current_time - self.last_master_heartbeat > self.heartbeat_timeout:
                 self.get_logger().warn(f"[{self.robot_namespace}] Master heartbeat lost. Initiating master election.")
                 self.elect_new_master()
 
     def check_slave_alive(self):
         """
-        Checks the heartbeats of other slaves and removes any that have timed out.
+        Controlla gli heartbeat degli altri slave e rimuove quelli che hanno superato il timeout.
         """
         current_time = time.time()
         for slave_ns in list(self.active_slaves.keys()):
@@ -200,20 +195,20 @@ class SlaveNavigationNode(Node):
 
     def elect_new_master(self):
         """
-        Elects a new master from the active slaves.
-        The slave with the highest priority (e.g., earliest namespace) becomes the new master.
+        Elegge un nuovo master dagli slave attivi.
+        Lo slave con la priorità più alta (ad esempio, il namespace più piccolo) diventa il nuovo master.
         """
-        # Determine all candidates (including self)
+        # Determina tutti i candidati (incluso se stesso)
         candidates = list(self.active_slaves.keys()) + [self.robot_namespace]
 
         if not candidates:
             self.get_logger().error(f"[{self.robot_namespace}] No candidates available for master election.")
             return
 
-        # Sort candidates based on namespace (assuming lex order gives priority)
+        # Ordina i candidati in base al namespace (assumendo che l'ordine lessicografico dia priorità)
         candidates_sorted = sorted(candidates)
 
-        # The first candidate in the sorted list becomes the new master
+        # Il primo candidato nella lista ordinata diventa il nuovo master
         new_master = candidates_sorted[0]
 
         if new_master == self.robot_namespace:
@@ -224,12 +219,12 @@ class SlaveNavigationNode(Node):
 
     def become_master(self):
         """
-        Transforms this slave into the master, performing all master duties.
+        Trasforma questo slave nel master, eseguendo tutte le funzioni del master.
         """
         self.is_master = True
         self.get_logger().info(f"[{self.robot_namespace}] Now acting as the master.")
 
-        # Publish the navigation graph to the '/navigation_graph' topic
+        # Pubblica il grafo di navigazione sul topic '/navigation_graph'
         if self.navigation_graph is not None:
             self.publish_navigation_graph()
             self.get_logger().info(f"[{self.robot_namespace}] Published navigation graph. Starting partitioning and waypoint assignment.")
@@ -239,7 +234,7 @@ class SlaveNavigationNode(Node):
 
     def publish_navigation_graph(self):
         """
-        Publishes the navigation graph on the '/navigation_graph' topic.
+        Pubblica il grafo di navigazione sul topic '/navigation_graph'.
         """
         graph_msg = String()
         graph_data = {
@@ -258,8 +253,8 @@ class SlaveNavigationNode(Node):
 
     def navigation_graph_callback(self, msg):
         """
-        Callback function triggered when a navigation graph message is received.
-        Stores the graph data.
+        Callback attivato quando viene ricevuto un messaggio di grafo di navigazione.
+        Memorizza i dati del grafo.
         """
         try:
             graph_data = json.loads(msg.data)
@@ -272,7 +267,7 @@ class SlaveNavigationNode(Node):
 
     def navigation_commands_callback(self, msg):
         """
-        Callback function triggered when a new waypoint message is received from the master.
+        Callback attivato quando viene ricevuto un nuovo waypoint dal master.
         """
         waypoint_data = json.loads(msg.data)
         self.get_logger().info(f"[{self.robot_namespace}] Received waypoint: {waypoint_data}")
@@ -280,7 +275,7 @@ class SlaveNavigationNode(Node):
 
     def execute_navigation(self, waypoint):
         """
-        Uses the TurtleBot4Navigator to move the robot to the specified waypoint.
+        Utilizza il TurtleBot4Navigator per muovere il robot verso il waypoint specificato.
         """
         label = waypoint['label']
         x = waypoint['x']
@@ -288,56 +283,60 @@ class SlaveNavigationNode(Node):
         orientation_str = waypoint['orientation']
         orientation = self.orientation_conversion(orientation_str)
 
-        # Log the navigation task
+        # Log del compito di navigazione
         self.get_logger().info(f"[{self.robot_namespace}] Navigating to {label} at ({x}, {y}) with orientation {orientation_str} ({orientation} radians).")
 
-        # Create a goal pose using the navigator
+        # Crea un goal pose usando il navigator
         goal_pose = self.navigator.getPoseStamped([x, y], orientation)
 
-        # Start the timer for navigation
+        # Inizia il tempo per la navigazione
         self.start_time = time.time()
 
         try:
-            # Check if the action server is available
+            # Verifica se l'action server è disponibile
             if not self.navigator.nav_to_pose_client.wait_for_server(timeout_sec=5.0):
                 error_message = f"Action server not available for {label}."
                 self.get_logger().error(error_message)
                 self.publish_status("error", error_message, 0.0, label)
                 return
 
-            # Start navigation towards the goal pose
+            # Inizia la navigazione verso il goal pose
             self.navigator.startToPose(goal_pose)
         except Exception as e:
-            # If an exception occurs, log an error and publish the status to the master
+            # Se si verifica un'eccezione, logga un errore e pubblica lo stato al master
             error_message = f"Exception occurred while sending goal to {label}: {e}"
             self.get_logger().error(error_message)
             self.publish_status("error", error_message, 0.0, label)
             return
 
-        # Wait until navigation is complete
+        # Attende fino al completamento della navigazione
         while not self.navigator.isTaskComplete():
             rclpy.spin_once(self, timeout_sec=0.1)
-            # Optionally, add checks for preemption or timeout here
+            # Opzionalmente, puoi aggiungere controlli per preemption o timeout qui
 
-        # Calculate the time taken for navigation
+        # Calcola il tempo impiegato per la navigazione
         time_taken = time.time() - self.start_time
 
-        # Check the result of the navigation
+        # Controlla il risultato della navigazione
         nav_result = self.navigator.getResult()
 
         if nav_result == TaskResult.SUCCEEDED:
-            # Navigation succeeded
+            # Navigazione riuscita
             self.get_logger().info(f"[{self.robot_namespace}] Reached {label} in {time_taken:.2f} seconds.")
             self.publish_status("reached", "", time_taken, label)
+            # Avanza al prossimo waypoint se presente
+            self.current_waypoint_index += 1
+            if self.is_master:
+                self.assign_next_waypoint_as_master()
         else:
-            # Navigation failed
+            # Navigazione fallita
             error_message = f"Navigation to {label} failed with result code {nav_result}."
             self.get_logger().error(error_message)
             self.publish_status("error", error_message, time_taken, label)
 
     def publish_status(self, status, error_message, time_taken, current_waypoint):
         """
-        Publishes the navigation status to the master.
+        Pubblica lo stato della navigazione al master.
         """
         status_data = {
             'robot_namespace': self.robot_namespace,
@@ -351,55 +350,63 @@ class SlaveNavigationNode(Node):
         self.status_publisher.publish(msg)
         self.get_logger().info(f"[{self.robot_namespace}] Published status: {status_data}")
 
-    def orientation_conversion(self, orientation_str):
+    def orientation_conversion(self, orientation_input):
         """
-        Converts an orientation string to radians.
+        Converte un orientamento stringa o float in radianti.
 
         Args:
-            orientation_str (str): Orientation as a string ('NORTH', 'EAST', 'SOUTH', 'WEST').
+            orientation_input (str or float): Orientamento come stringa ('NORTH', 'EAST', 'SOUTH', 'WEST') o float in radianti.
 
         Returns:
-            float: Orientation in radians.
+            float: Orientamento in radianti.
         """
-        orientation_map = {
-            "NORTH": 0.0,
-            "EAST": -math.pi / 2,
-            "SOUTH": math.pi,
-            "WEST": math.pi / 2
-        }
-        return orientation_map.get(orientation_str.upper(), 0.0)
+        if isinstance(orientation_input, str):
+            orientation_map = {
+                "NORTH": 0.0,
+                "EAST": -math.pi / 2,
+                "SOUTH": math.pi,
+                "WEST": math.pi / 2
+            }
+            return orientation_map.get(orientation_input.upper(), 0.0)
+        elif isinstance(orientation_input, (float, int)):
+            # Se è già un float, lo ritorna direttamente
+            return float(orientation_input)
+        else:
+            # Valore di default se il tipo non è riconosciuto
+            return 0.0
+
 
     def partition_and_assign_waypoints(self):
         """
-        Partitions the navigation graph and assigns waypoints to slaves.
-        This method is called if the slave assumes the master role.
+        Partiziona il grafo di navigazione e assegna i waypoint agli slave.
+        Questo metodo viene chiamato se lo slave assume il ruolo di master.
         """
         if self.navigation_graph is None:
             self.get_logger().error(f"[{self.robot_namespace}] Navigation graph not available. Cannot partition and assign waypoints.")
             return
 
-        # Load the graph from the received data
-        full_graph = load_full_graph_from_data(self.navigation_graph)
+        # Carica il grafo dai dati ricevuti
+        full_graph = self.navigation_graph
 
-        # Retrieve all active slaves, including self
+        # Recupera tutti gli slave attivi, inclusi se stesso
         all_slaves = list(self.active_slaves.keys()) + [self.robot_namespace]
-        all_slaves_sorted = sorted(all_slaves)  # Sort based on namespace for priority
+        all_slaves_sorted = sorted(all_slaves)  # Ordina in base al namespace per priorità
 
         num_slaves = len(all_slaves_sorted)
 
-        # Collect initial positions of slaves
+        # Raccoglie le posizioni iniziali degli slave
         start_positions = []
         for slave_ns in all_slaves_sorted:
             if slave_ns == self.robot_namespace:
                 start_positions.append({'x': self.initial_x, 'y': self.initial_y})
             else:
-                # In a full implementation, retrieve other slaves' initial positions
-                # For simplicity, assign the master its own initial position for now
-                # You should implement a mechanism to gather other slaves' positions
-                # e.g., via a shared parameter server or a dedicated topic
+                # In una implementazione completa, recupera le posizioni iniziali degli altri slave
+                # Per semplicità, assegna al master la propria posizione iniziale per ora
+                # Dovresti implementare un meccanismo per raccogliere le posizioni degli altri slave
+                # Ad esempio, tramite un parametro server condiviso o un topic dedicato
                 start_positions.append({'x': self.initial_x, 'y': self.initial_y})
 
-        # Partition the graph into subgraphs based on the number of slaves and their initial positions
+        # Partiziona il grafo in sottografi basati sul numero di slave e le loro posizioni iniziali
         try:
             subgraphs = partition_graph(full_graph, num_slaves, start_positions=start_positions)
             self.get_logger().info(f"[{self.robot_namespace}] Partitioned the graph into {len(subgraphs)} subgraphs.")
@@ -407,77 +414,69 @@ class SlaveNavigationNode(Node):
             self.get_logger().error(f"[{self.robot_namespace}] Failed to partition graph: {e}")
             return
 
-        # Assign each subgraph to a slave
+        # Assegna ogni sottografo a uno slave
         for idx, slave_ns in enumerate(all_slaves_sorted):
             subgraph = subgraphs[idx]
             waypoints = self.extract_waypoints(subgraph)
 
-            # For simplicity, assuming that the master has all the necessary data to assign waypoints
+            # Per semplicità, assumiamo che il master abbia tutti i dati necessari per assegnare i waypoint
             if slave_ns == self.robot_namespace:
-                # Assign waypoints to self as master
+                # Assegna i waypoint a se stesso come master
                 self.assign_route_to_master(waypoints)
             else:
-                # Implement a method to send waypoints to other slaves
-                # For demonstration, we'll skip this part
+                # Implementa un metodo per inviare i waypoint agli altri slave
+                # Per dimostrazione, saltiamo questa parte
                 pass
 
         self.master_graph_partitioned = True
 
     def assign_route_to_master(self, waypoints):
         """
-        Assigns a waypoint route to itself as the new master.
+        Assegna un percorso di waypoint a se stesso come nuovo master.
 
         Args:
-            waypoints (list of dict): List of waypoints.
+            waypoints (list of dict): Lista di waypoint.
         """
-        # Calculate the DCPP (Eulerian Circuit) route
+        # Calcola il percorso DCPP (circuito Euleriano)
         dcpp_route = calculate_dcpp_route(waypoints, self.navigation_graph, self.get_logger())
 
         self.assigned_waypoints = dcpp_route.copy()
         self.current_waypoint_index = 0
 
-        # Detailed logging of the assigned route
+        # Log dettagliato del percorso assegnato
         self.get_logger().info(f"[{self.robot_namespace}] DCPP route assigned as master:")
         for wp in dcpp_route:
             self.get_logger().info(f" - {wp['label']} at ({wp['x']}, {wp['y']}) with orientation {wp['orientation']} radians")
 
-        # Assign the first waypoint
+        # Assegna il primo waypoint
         self.assign_next_waypoint_as_master()
 
-        # Log the number of assigned waypoints
+        # Log del numero di waypoint assegnati
         self.get_logger().info(f"[{self.robot_namespace}] Assigned {len(dcpp_route)} waypoints as master.")
 
     def assign_next_waypoint_as_master(self):
         """
-        Assigns the next waypoint in the queue to itself as the master.
+        Assegna il prossimo waypoint nella coda a se stesso come master.
         """
         if self.current_waypoint_index < len(self.assigned_waypoints):
             waypoint = self.assigned_waypoints[self.current_waypoint_index]
-            waypoint_msg = {
-                'label': waypoint['label'],
-                'x': waypoint['x'],
-                'y': waypoint['y'],
-                'orientation': orientation_conversion(waypoint['orientation'])
-            }
-            msg = String()
-            msg.data = json.dumps(waypoint_msg)
-            self.status_publisher.publish(msg)
-            self.get_logger().info(f"[{self.robot_namespace}] Assigned waypoint as master: {waypoint_msg}")
+            # Non è necessario pubblicare il waypoint, basta chiamare execute_navigation
+            self.execute_navigation(waypoint)
         else:
-            # All waypoints have been assigned, restart from the first
+            # Tutti i waypoint sono stati assegnati, riparti dal primo
             self.get_logger().info(f"[{self.robot_namespace}] All waypoints have been assigned. Restarting the route.")
             self.current_waypoint_index = 0
             self.assign_next_waypoint_as_master()
 
     def extract_waypoints(self, subgraph):
         """
-        Extracts waypoints from a subgraph.
+        Estrae i waypoint da un sottografo.
 
         Args:
-            subgraph (nx.Graph): Subgraph from which to extract waypoints.
+            subgraph (nx.Graph): Sottografo da cui estrarre i waypoint.
 
         Returns:
-            list of dict: List of waypoints with 'label', 'x', 'y', and 'orientation'.
+            list of dict: Lista di waypoint con 'label', 'x', 'y', e 'orientation'.
         """
         waypoints = []
         for node, data in subgraph.nodes(data=True):
@@ -492,13 +491,13 @@ class SlaveNavigationNode(Node):
 
 def load_full_graph_from_data(graph_data):
     """
-    Loads a NetworkX graph from a dictionary containing nodes and edges.
+    Carica un grafo NetworkX da un dizionario contenente nodi e archi.
 
     Args:
-        graph_data (dict): Dictionary with 'nodes' and 'edges'.
+        graph_data (dict): Dizionario con 'nodes' e 'edges'.
 
     Returns:
-        nx.DiGraph: The loaded directed graph.
+        nx.DiGraph: Il grafo diretto caricato.
     """
     G = nx.DiGraph()
 
@@ -524,13 +523,13 @@ def main(args=None):
     parser.add_argument('--initial_y', type=float, required=True, help='Initial y coordinate')
     parser.add_argument('--initial_orientation', type=str, required=True, help='Initial orientation (NORTH, EAST, SOUTH, WEST)')
 
-    # Parse command-line arguments
+    # Parse gli argomenti passati da linea di comando
     parsed_args, unknown = parser.parse_known_args()
 
-    # Initialize ROS 2
+    # Inizializza ROS 2
     rclpy.init(args=args)
 
-    # Create an instance of the SlaveNavigationNode
+    # Crea l'istanza del nodo SlaveNavigationNode
     node = SlaveNavigationNode(
         robot_namespace=parsed_args.robot_namespace,
         initial_x=parsed_args.initial_x,
@@ -539,12 +538,12 @@ def main(args=None):
     )
 
     try:
-        # Keep the node active and listening for callbacks
+        # Mantiene il nodo attivo e in ascolto dei callback
         rclpy.spin(node)
     except KeyboardInterrupt:
         pass
     finally:
-        # Destroy the node and shut down ROS 2
+        # Distrugge il nodo e ferma ROS 2
         node.destroy_node()
         rclpy.shutdown()
 

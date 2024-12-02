@@ -51,7 +51,7 @@ class MasterNavigationNode(Node):
 
         # Publisher per inviare il grafo di navigazione
         self.graph_publisher = self.create_publisher(String, '/navigation_graph', 10)
-        self.publish_navigation_graph()
+        self.graph_timer = self.create_timer(5.0, self.publish_navigation_graph)
 
         # Inizializzazione dei subscriber per la registrazione degli slave e le posizioni iniziali
         self.slave_registration_subscriber = self.create_subscription(
@@ -256,10 +256,10 @@ class MasterNavigationNode(Node):
             self.get_logger().error(f"Invalid navigation status message: {e}")
             return
 
-        self.get_logger().info(
-            f"Received status from {slave_ns}: {status}, "
-            f"Waypoint: {current_waypoint}, Time Taken: {time_taken}s, Error: {error_message}"
-        )
+        # self.get_logger().info(
+        #     f"Received status from {slave_ns}: {status}, "
+        #     f"Waypoint: {current_waypoint}, Time Taken: {time_taken}s, Error: {error_message}"
+        # )
 
         current_time = self.get_clock().now().nanoseconds / 1e9
 
@@ -490,7 +490,7 @@ class MasterNavigationNode(Node):
             self.repartition_and_assign_waypoints()
 
         # Stampa lo stato corrente degli slave
-        self.print_current_status()
+        # self.print_current_status()
 
         # **Importante:** Non assegnare waypoint in questa callback.
         # L'assegnazione dei waypoint è gestita nella navigation_status_callback quando lo slave conferma il raggiungimento di un waypoint.

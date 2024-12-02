@@ -42,23 +42,12 @@ def generate_launch_description():
             name='slave_navigation_node',
             namespace=launch.substitutions.LaunchConfiguration('robot_namespace'),
             output='screen',
-            parameters=[{
-                'robot_namespace': launch.substitutions.LaunchConfiguration('robot_namespace'),
-                'initial_x': launch.substitutions.LaunchConfiguration('initial_x'),
-                'initial_y': launch.substitutions.LaunchConfiguration('initial_y'),
-                'initial_orientation': launch.substitutions.LaunchConfiguration('initial_orientation'),
-                'robot_id': launch.substitutions.LaunchConfiguration('robot_id')
-            }]
+            arguments=[
+                '--robot_namespace', launch.substitutions.LaunchConfiguration('robot_namespace'),
+                '--initial_x', launch.substitutions.LaunchConfiguration('initial_x'),
+                '--initial_y', launch.substitutions.LaunchConfiguration('initial_y'),
+                '--initial_orientation', launch.substitutions.LaunchConfiguration('initial_orientation'),
+                '--robot_id', launch.substitutions.LaunchConfiguration('robot_id')
+            ]
         )
     ])
-
-
-
-
-#ros2 launch fleet_turtlebot4_navigation slave_navigation_launch.py     robot_namespace:=robot_111     initial_x:=-2.3077550000000002     initial_y:=-0.5235470000000007     initial_orientation:=SOUTH     robot_id:=111
-# ros2 launch fleet_turtlebot4_navigation slave_navigation_launch.py \
-#     robot_namespace:=robot_111 \
-#     initial_x:=-2.307755 \
-#     initial_y:=-0.523547 \
-#     initial_orientation:=NORTH \
-#     robot_id:=111
