@@ -45,7 +45,7 @@ class SlaveNavigationNode(Node):
         # Subscriber per ricevere messaggi di heartbeat dal master
         self.master_heartbeat_subscriber = self.create_subscription(
             String,
-            'master_heartbeat',
+            '/master_heartbeat',
             self.master_heartbeat_callback,
             10
         )
@@ -99,7 +99,7 @@ class SlaveNavigationNode(Node):
         self.get_logger().info(f"[{self.robot_namespace}] Slave node initialized at ({self.initial_x}, {self.initial_y}) with orientation {self.initial_orientation_str} ({self.initial_orientation} radians).")
 
         # Timer per controllare il timeout del heartbeat del master
-        self.master_check_timer = self.create_timer(1.0, self.check_master_alive)
+        self.master_check_timer = self.create_timer(10.0, self.check_master_alive)
 
         # Timer per controllare gli heartbeat degli slave e mantenere la lista active_slaves
         self.slave_check_timer = self.create_timer(2.0, self.check_slave_alive)
@@ -226,7 +226,7 @@ class SlaveNavigationNode(Node):
         # Pubblica il grafo di navigazione sul topic '/navigation_graph'
         if self.navigation_graph is not None:
             self.publish_navigation_graph()
-            self.get_logger().info(f"[{self.robot_namespace}] Published navigation graph. Starting partitioning and waypoint assignment.")
+            # self.get_logger().info(f"[{self.robot_namespace}] Published navigation graph. Starting partitioning and waypoint assignment.")
             self.partition_and_assign_waypoints()
         else:
             self.get_logger().error(f"[{self.robot_namespace}] Navigation graph not available. Cannot become master.")
@@ -258,7 +258,7 @@ class SlaveNavigationNode(Node):
         try:
             graph_data = json.loads(msg.data)
             self.navigation_graph = load_full_graph_from_data(graph_data)
-            self.get_logger().info(f"[{self.robot_namespace}] Received navigation graph.")
+            # self.get_logger().info(f"[{self.robot_namespace}] Received navigation graph.") 
             if self.is_master and not self.master_graph_partitioned:
                 self.partition_and_assign_waypoints()
         except json.JSONDecodeError as e:
@@ -349,7 +349,7 @@ class SlaveNavigationNode(Node):
         msg = String()
         msg.data = json.dumps(status_data)
         self.status_publisher.publish(msg)
-        self.get_logger().info(f"[{self.robot_namespace}] Published status: {status_data}")
+        # self.get_logger().info(f"[{self.robot_namespace}] Published status: {status_data}")
 
     def orientation_conversion(self, orientation_input):
         """
@@ -549,7 +549,6 @@ def main(args=None):
     parser.add_argument('--initial_x', type=float, required=True, help='Initial x coordinate')
     parser.add_argument('--initial_y', type=float, required=True, help='Initial y coordinate')
     parser.add_argument('--initial_orientation', type=str, required=True, help='Initial orientation (NORTH, EAST, SOUTH, WEST)')
-    parser.add_argument('--robot_id', type=str, required=True, help='ID of the robot')
 
     # Parse gli argomenti passati da linea di comando
     parsed_args, unknown = parser.parse_known_args()

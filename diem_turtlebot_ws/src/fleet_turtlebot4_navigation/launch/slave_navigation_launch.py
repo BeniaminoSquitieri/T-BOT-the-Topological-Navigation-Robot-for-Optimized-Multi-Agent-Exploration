@@ -29,11 +29,6 @@ def generate_launch_description():
             default_value='NORTH',  # Passa l'orientamento come stringa
             description='Orientamento iniziale (NORTH, EAST, SOUTH, WEST)'
         ),
-        launch.actions.DeclareLaunchArgument(
-            'robot_id',
-            default_value='111',
-            description='ID del robot'
-        ),
 
         # Definizione del nodo slave_navigation_node
         Node(
@@ -47,7 +42,6 @@ def generate_launch_description():
                 '--initial_x', launch.substitutions.LaunchConfiguration('initial_x'),
                 '--initial_y', launch.substitutions.LaunchConfiguration('initial_y'),
                 '--initial_orientation', launch.substitutions.LaunchConfiguration('initial_orientation'),
-                '--robot_id', launch.substitutions.LaunchConfiguration('robot_id')
             ]
         )
     ])

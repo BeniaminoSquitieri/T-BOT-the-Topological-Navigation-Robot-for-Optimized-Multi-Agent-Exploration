@@ -48,9 +48,9 @@ def calculate_dcpp_route(waypoints, subgraph, logger):
                     raise
 
     # Now, the graph should be Eulerian
-    if not nx.is_eulerian(subgraph):
-        logger.error("Failed to make the subgraph Eulerian for DCPP.")
-        raise ValueError("Subgraph is not Eulerian after adding additional edges.")
+    # if not nx.is_eulerian(subgraph):
+    #     logger.error("Failed to make the subgraph Eulerian for DCPP.")
+    #     raise ValueError("Subgraph is not Eulerian after adding additional edges.")
 
     # Find the Eulerian circuit
     euler_circuit = list(nx.eulerian_circuit(subgraph))
@@ -67,10 +67,10 @@ def calculate_dcpp_route(waypoints, subgraph, logger):
     # Log the calculated route
     logger.info("Calculated DCPP route:")
     for wp in ordered_route:
-        logger.info(f" - {wp['label']} at ({wp['x']}, {wp['y']}) with orientation {wp['orientation']} radians")
+        logger.info(f" - {wp['label']} at ({wp['x']}, {wp['y']}) ")
     
     # **Aggiunta della stampa del percorso DCPP**
-    print("\n===== Calculated DCPP Route =====")
+    # print("\n===== Calculated DCPP Route =====")
     for idx, wp in enumerate(ordered_route, start=1):
         print(f"Waypoint {idx}: {wp['label']} at ({wp['x']}, {wp['y']}), Orientation: {wp['orientation']} radians")
     print("===== End of DCPP Route =====\n")

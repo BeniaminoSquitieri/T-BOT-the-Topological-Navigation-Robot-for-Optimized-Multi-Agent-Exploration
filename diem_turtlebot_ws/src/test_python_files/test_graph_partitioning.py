@@ -5,9 +5,11 @@ import networkx as nx
 import matplotlib.pyplot as plt
 import sys
 
-sys.path.append('/home/beniamino/turtlebot4/diem_turtlebot_ws/src/multi_robot_pkg_navigation/map/map_transformation_phase/graph')
+sys.path.append('/home/beniamino/turtlebot4/diem_turtlebot_ws/src/fleet_turtlebot4_navigation')
 
-from graph_partitioning import load_full_graph, partition_graph, save_subgraphs
+
+from fleet_turtlebot4_navigation.graph_partitioning import load_full_graph, partition_graph, save_subgraphs
+
 
 # Directory per salvare le immagini dei grafi
 IMAGES_DIR = "./graph_images"  # Puoi personalizzare il percorso qui

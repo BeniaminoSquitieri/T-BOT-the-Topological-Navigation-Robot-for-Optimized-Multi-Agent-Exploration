@@ -44,10 +44,10 @@ class MasterNavigationNode(Node):
 
         # Caricamento del grafo completo dal file JSON specificato
         self.full_graph = load_full_graph(self.graph_path)
-        self.get_logger().info("Master node loaded the graph.")
+        # self.get_logger().info("Master node loaded the graph.")
 
         # Stampa di tutti i nodi del grafo caricato
-        self.print_all_graph_nodes()
+        # self.print_all_graph_nodes()
 
         # Publisher per inviare il grafo di navigazione
         self.graph_publisher = self.create_publisher(String, '/navigation_graph', 10)
@@ -125,7 +125,7 @@ class MasterNavigationNode(Node):
         }
         graph_msg.data = json.dumps(graph_data)
         self.graph_publisher.publish(graph_msg)
-        self.get_logger().info("Published navigation graph.")
+        # self.get_logger().info("Published navigation graph.")
 
     def publish_heartbeat(self):
         """
@@ -159,7 +159,7 @@ class MasterNavigationNode(Node):
 
             # Non ripartizionare subito; attendi che lo slave invii la posizione iniziale
         else:
-            self.get_logger().info(f"Slave re-registered: {slave_ns}")
+            # self.get_logger().info(f"Slave re-registered: {slave_ns}")
             # Aggiorna il tempo dell'ultimo aggiornamento dello slave
             self.slaves[slave_ns].last_seen_time = current_time
 
@@ -351,8 +351,8 @@ class MasterNavigationNode(Node):
             dcpp_route = calculate_dcpp_route(waypoints, subgraph, self.get_logger())
 
             # Stampa del percorso DCPP calcolato
-            self.print_dcpp_route(slave_ns, dcpp_route)
-
+            # self.print_dcpp_route(slave_ns, dcpp_route)
+  
             # Assegna il percorso allo slave
             self.assign_route_to_slave(slave_ns, dcpp_route)
 
@@ -431,9 +431,9 @@ class MasterNavigationNode(Node):
         slave.current_waypoint_index = 0
 
         # Log dettagliato del percorso assegnato
-        self.get_logger().info(f"Assigned DCPP route to {slave_ns}. Total waypoints: {len(route)}")
+        # self.get_logger().info(f"Assigned DCPP route to {slave_ns}. Total waypoints: {len(route)}")
 
-        # Assegna il primo waypoint
+        # Assegna il primo waypoint 
         self.assign_next_waypoint(slave)
 
     def assign_next_waypoint(self, slave):
