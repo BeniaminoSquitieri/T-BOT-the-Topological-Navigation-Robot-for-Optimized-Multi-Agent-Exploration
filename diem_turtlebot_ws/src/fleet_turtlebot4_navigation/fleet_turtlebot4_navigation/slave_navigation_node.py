@@ -14,10 +14,7 @@ from .path_calculation import calculate_dcpp_route
 
 class SlaveNavigationNode(Node):
     def __init__(self, robot_namespace, initial_x, initial_y, initial_orientation_str):
-        
-        # In __init__ del SlaveNavigationNode
-
-
+        # Inizializzazione delle variabili principali
         self.robot_namespace = robot_namespace
         self.initial_x = initial_x
         self.initial_y = initial_y
@@ -25,23 +22,19 @@ class SlaveNavigationNode(Node):
         self.initial_orientation = self.orientation_conversion(initial_orientation_str)
         super().__init__('slave_navigation_node')
 
-
         # Publisher per registrare lo slave con il master
         self.slave_registration_publisher = self.create_publisher(String, '/slave_registration', 10)
 
         # Publisher per inviare la posizione iniziale al master
         self.initial_position_publisher = self.create_publisher(String, '/slave_initial_positions', 10)
 
-        # Esempio per il subscriber dei comandi di navigazione
+        # Subscriber per i comandi di navigazione
         self.navigation_commands_subscriber = self.create_subscription(
             String,
             'navigation_commands',  # Topic relativo
             self.navigation_commands_callback,
             10
         )
-
-        # Fai lo stesso per tutti gli altri publisher e subscriber
-
 
         # Publisher per inviare lo stato della navigazione al master
         self.status_publisher = self.create_publisher(String, 'navigation_status', 10)
@@ -95,6 +88,12 @@ class SlaveNavigationNode(Node):
 
         # Inizializza il grafo di navigazione
         self.navigation_graph = None
+
+        # Inizializza il dizionario per i publisher dei comandi di navigazione degli slave
+        self.slave_command_publishers = {}  # Chiave: slave_ns, Valore: Publisher
+
+        # Inizializza il dizionario per memorizzare le posizioni iniziali degli altri slave
+        self.slave_initial_positions = {}  # Chiave: slave_ns, Valore: {'x': float, 'y': float}
 
         # Log dell'inizializzazione dello slave
         self.get_logger().info(f"[{self.robot_namespace}] Slave node initialized at ({self.initial_x}, {self.initial_y}) with orientation {self.initial_orientation_str} ({self.initial_orientation} radians).")
@@ -270,6 +269,9 @@ class SlaveNavigationNode(Node):
         Callback attivato quando viene ricevuto un nuovo waypoint dal master.
         """
         waypoint_data = json.loads(msg.data)
+        # Verifica e converte l'orientamento se necessario
+        if isinstance(waypoint_data.get('orientation'), str):
+            waypoint_data['orientation'] = self.orientation_conversion(waypoint_data['orientation'])
         self.get_logger().info(f"[{self.robot_namespace}] Received waypoint: {waypoint_data}")
         self.execute_navigation(waypoint_data)
 
@@ -280,14 +282,13 @@ class SlaveNavigationNode(Node):
         label = waypoint['label']
         x = waypoint['x']
         y = waypoint['y']
-        orientation_str = waypoint['orientation']
-        orientation = self.orientation_conversion(orientation_str)
+        orientation_rad = waypoint['orientation']  # Ora già in radianti
 
         # Log del compito di navigazione
-        self.get_logger().info(f"[{self.robot_namespace}] Navigating to {label} at ({x}, {y}) with orientation {orientation_str} ({orientation} radians).")
+        self.get_logger().info(f"[{self.robot_namespace}] Navigating to {label} at ({x}, {y}) with orientation {orientation_rad} radians.")
 
         # Crea un goal pose usando il navigator
-        goal_pose = self.navigator.getPoseStamped([x, y], orientation)
+        goal_pose = self.navigator.getPoseStamped([x, y], orientation_rad)
 
         # Inizia il tempo per la navigazione
         self.start_time = time.time()
@@ -375,7 +376,6 @@ class SlaveNavigationNode(Node):
             # Valore di default se il tipo non è riconosciuto
             return 0.0
 
-
     def partition_and_assign_waypoints(self):
         """
         Partiziona il grafo di navigazione e assegna i waypoint agli slave.
@@ -400,11 +400,13 @@ class SlaveNavigationNode(Node):
             if slave_ns == self.robot_namespace:
                 start_positions.append({'x': self.initial_x, 'y': self.initial_y})
             else:
-                # In una implementazione completa, recupera le posizioni iniziali degli altri slave
-                # Per semplicità, assegna al master la propria posizione iniziale per ora
-                # Dovresti implementare un meccanismo per raccogliere le posizioni degli altri slave
-                # Ad esempio, tramite un parametro server condiviso o un topic dedicato
-                start_positions.append({'x': self.initial_x, 'y': self.initial_y})
+                # Recupera le posizioni iniziali degli altri slave
+                if slave_ns in self.slave_initial_positions:
+                    pos = self.slave_initial_positions[slave_ns]
+                    start_positions.append({'x': pos['x'], 'y': pos['y']})
+                else:
+                    self.get_logger().warn(f"[{self.robot_namespace}] Initial position for slave '{slave_ns}' not available. Using master position as fallback.")
+                    start_positions.append({'x': self.initial_x, 'y': self.initial_y})
 
         # Partiziona il grafo in sottografi basati sul numero di slave e le loro posizioni iniziali
         try:
@@ -419,14 +421,39 @@ class SlaveNavigationNode(Node):
             subgraph = subgraphs[idx]
             waypoints = self.extract_waypoints(subgraph)
 
-            # Per semplicità, assumiamo che il master abbia tutti i dati necessari per assegnare i waypoint
             if slave_ns == self.robot_namespace:
                 # Assegna i waypoint a se stesso come master
                 self.assign_route_to_master(waypoints)
             else:
-                # Implementa un metodo per inviare i waypoint agli altri slave
-                # Per dimostrazione, saltiamo questa parte
-                pass
+                # Assicurati di avere un publisher per lo slave
+                if slave_ns not in self.slave_command_publishers:
+                    # Crea un publisher per lo slave se non esiste
+                    topic_name = f"/{slave_ns}/navigation_commands"
+                    publisher = self.create_publisher(String, topic_name, 10)
+                    self.slave_command_publishers[slave_ns] = publisher
+                    self.get_logger().info(f"[{self.robot_namespace}] Created publisher for slave '{slave_ns}' on topic '{topic_name}'.")
+
+                # Recupera il publisher
+                publisher = self.slave_command_publishers[slave_ns]
+
+                # Pubblica i waypoint uno per uno
+                for waypoint in waypoints:
+                    # Converti l'orientamento in radianti
+                    if isinstance(waypoint['orientation'], str):
+                        orientation_rad = self.orientation_conversion(waypoint['orientation'])
+                    else:
+                        orientation_rad = waypoint['orientation']
+                    
+                    waypoint_msg = {
+                        'label': waypoint['label'],
+                        'x': waypoint['x'],
+                        'y': waypoint['y'],
+                        'orientation': orientation_rad
+                    }
+                    msg = String()
+                    msg.data = json.dumps(waypoint_msg)
+                    publisher.publish(msg)
+                    self.get_logger().info(f"[{self.robot_namespace}] Assigned waypoint to {slave_ns}: {waypoint_msg}")
 
         self.master_graph_partitioned = True
 
@@ -522,6 +549,7 @@ def main(args=None):
     parser.add_argument('--initial_x', type=float, required=True, help='Initial x coordinate')
     parser.add_argument('--initial_y', type=float, required=True, help='Initial y coordinate')
     parser.add_argument('--initial_orientation', type=str, required=True, help='Initial orientation (NORTH, EAST, SOUTH, WEST)')
+    parser.add_argument('--robot_id', type=str, required=True, help='ID of the robot')
 
     # Parse gli argomenti passati da linea di comando
     parsed_args, unknown = parser.parse_known_args()
