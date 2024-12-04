@@ -95,7 +95,8 @@ For example:
 
 
 ```bash
-python3 test_graph_partitioning.py --graph_path /home/beniamino/turtlebot4/diem_turtlebot_ws/src/multi_robot_pkg_navigation/nav_pkg/nav_pkg/navigation_hardware_limitation.json --num_partitions 2 --output_dir ./subgraphs 
+python3 test_graph_partitioning.py --graph_path /home/beniamino/turtlebot4/diem_turtlebot_ws/src/fleet_turtlebot4_navigation/map/navigation_hardware_limitation.json --num_partitions 2 --output_dir ./subgraphs 
+
 ```
 
 #### **Details**

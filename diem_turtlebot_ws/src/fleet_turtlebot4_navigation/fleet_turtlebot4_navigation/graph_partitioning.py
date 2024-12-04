@@ -228,3 +228,30 @@ def save_subgraphs(subgraphs, output_dir):
         subgraph_paths.append(subgraph_file_path)  # Track saved file paths
 
     return subgraph_paths
+
+
+
+def load_full_graph_from_data(graph_data):
+    """
+    Carica un grafo NetworkX da un dizionario contenente nodi e archi.
+
+    Args:
+        graph_data (dict): Dizionario con 'nodes' e 'edges'.
+
+    Returns:
+        nx.DiGraph: Il grafo diretto caricato.
+    """
+    G = nx.DiGraph()
+
+    for node in graph_data['nodes']:
+        label = node['label']
+        x = node['x']
+        y = node['y']
+        orientation = node.get('orientation', 0.0)
+        G.add_node(label, x=x, y=y, orientation=orientation)
+
+    for edge in graph_data['edges']:
+        u = edge['from']
+        v = edge['to']
+        weight = edge.get('weight', 1.0)
+        G.add_edge(u, v, weight=weight)

@@ -29,18 +29,6 @@
             "direction": "NORTH"
         },
         {
-            "from": "node_5",
-            "to": "node_15",
-            "weight": 8.22389810248157,
-            "direction": "WEST"
-        },
-        {
-            "from": "node_15",
-            "to": "node_5",
-            "weight": 8.22389810248157,
-            "direction": "EAST"
-        },
-        {
             "from": "node_15",
             "to": "node_16",
             "weight": 20.600060679522283,
@@ -51,6 +39,18 @@
             "to": "node_5",
             "weight": 19.609181522949907,
             "direction": "SOUTH"
+        },
+        {
+            "from": "node_10",
+            "to": "node_16",
+            "weight": 7.500666637039674,
+            "direction": "WEST"
+        },
+        {
+            "from": "node_16",
+            "to": "node_10",
+            "weight": 7.500666637039674,
+            "direction": "EAST"
         },
         {
             "from": "node_16",

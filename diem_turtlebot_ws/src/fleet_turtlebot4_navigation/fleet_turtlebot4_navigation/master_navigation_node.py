@@ -6,8 +6,10 @@ from std_msgs.msg import String
 import json
 import math
 from .graph_partitioning import load_full_graph, partition_graph
-from .path_calculation import calculate_dcpp_route, orientation_rad_to_str  # Modificato
+from .path_calculation import calculate_dcpp_route, orientation_rad_to_str
 import os
+import networkx as nx
+import threading
 
 class SlaveState:
     """
@@ -16,12 +18,13 @@ class SlaveState:
     def __init__(self, slave_ns, publisher):
         self.slave_ns = slave_ns
         self.publisher = publisher
-        self.assigned_waypoints = []  # Lista di waypoint assegnati
+        self.assigned_waypoints = []  # Lista di waypoint assegnati (DCPP route)
         self.current_waypoint_index = 0  # Indice del prossimo waypoint da assegnare
         self.last_seen_time = 0.0  # Ultima volta che lo slave ha comunicato
         self.initial_x = None  # Posizione iniziale X
         self.initial_y = None  # Posizione iniziale Y
         self.initial_orientation = None  # Orientamento iniziale
+        self.waiting = False  # Flag per indicare se lo slave è in attesa di un waypoint
 
 class MasterNavigationNode(Node):
     def __init__(self):
@@ -44,10 +47,6 @@ class MasterNavigationNode(Node):
 
         # Caricamento del grafo completo dal file JSON specificato
         self.full_graph = load_full_graph(self.graph_path)
-        # self.get_logger().info("Master node loaded the graph.")
-
-        # Stampa di tutti i nodi del grafo caricato
-        # self.print_all_graph_nodes()
 
         # Publisher per inviare il grafo di navigazione
         self.graph_publisher = self.create_publisher(String, '/navigation_graph', 10)
@@ -82,7 +81,7 @@ class MasterNavigationNode(Node):
         # Creazione di un timer che pubblica messaggi di heartbeat ogni 1 secondo
         self.heartbeat_timer = self.create_timer(1.0, self.publish_heartbeat)
 
-        # Timer per controllare lo stato dei slave e assegnare nuovi waypoints
+        # Timer per controllare lo stato dei slave e rimuovere quelli inattivi
         self.timer = self.create_timer(self.check_interval, self.timer_callback)
 
         # Dizionario per tracciare gli slave attivi e il loro stato
@@ -91,22 +90,14 @@ class MasterNavigationNode(Node):
         # Flag per indicare se il partizionamento del grafo e l'assegnazione dei waypoint sono stati completati
         self.partitioning_done = False
 
-    def print_all_graph_nodes(self):
-        """
-        Stampa tutti i nodi del grafo con le loro coordinate.
-        """
-        self.get_logger().info("----- Grafico Caricato -----")
-        self.get_logger().info(f"Nodi ({len(self.full_graph.nodes())}):")
-        for node, data in self.full_graph.nodes(data=True):
-            x = data.get('x', 0.0)
-            y = data.get('y', 0.0)
-            orientation = data.get('orientation', 0.0)
-            self.get_logger().info(f"  Nodo: {node}, Posizione: ({x}, {y}), Orientamento: {orientation} radians")
-        self.get_logger().info(f"Archi ({len(self.full_graph.edges())}):")
-        for u, v, data in self.full_graph.edges(data=True):
-            weight = data.get('weight', 1.0)
-            self.get_logger().info(f"  Da {u} a {v}, Peso: {weight}")
-        self.get_logger().info("----- Fine del Grafico -----")
+        # Aggiungi un set per tracciare i nodi attualmente occupati
+        self.occupied_nodes = set()
+
+        # Lock per gestire accessi concorrenti
+        self.lock = threading.Lock()
+
+        # Log dell'inizializzazione del master
+        self.get_logger().info("Master node initialized.")
 
     def publish_navigation_graph(self):
         """
@@ -125,7 +116,7 @@ class MasterNavigationNode(Node):
         }
         graph_msg.data = json.dumps(graph_data)
         self.graph_publisher.publish(graph_msg)
-        # self.get_logger().info("Published navigation graph.")
+        self.get_logger().info("Published navigation graph.")
 
     def publish_heartbeat(self):
         """
@@ -159,14 +150,13 @@ class MasterNavigationNode(Node):
 
             # Non ripartizionare subito; attendi che lo slave invii la posizione iniziale
         else:
-            # self.get_logger().info(f"Slave re-registered: {slave_ns}")
             # Aggiorna il tempo dell'ultimo aggiornamento dello slave
             self.slaves[slave_ns].last_seen_time = current_time
 
     def initial_position_callback(self, msg):
         """
         Callback per gestire i messaggi di posizione iniziale degli slave.
-        Si aspetta una stringa JSON con 'robot_namespace', 'x', 'y'.
+        Si aspetta una stringa JSON con 'robot_namespace', 'x', 'y', 'orientation'.
 
         Args:
             msg (String): Messaggio contenente la posizione iniziale dello slave.
@@ -187,6 +177,7 @@ class MasterNavigationNode(Node):
             slave_ns = data['robot_namespace']
             initial_x = float(data['x'])
             initial_y = float(data['y'])
+            orientation = data.get('orientation', 'NORTH')  # Assicurati di ricevere anche l'orientamento
         except (json.JSONDecodeError, KeyError, ValueError) as e:
             # Stampa di errore nel caso il messaggio non sia valido
             self.get_logger().error(f"Invalid initial position message: {e}")
@@ -199,9 +190,10 @@ class MasterNavigationNode(Node):
             slave.last_seen_time = current_time
             slave.initial_x = initial_x
             slave.initial_y = initial_y
+            slave.initial_orientation = orientation
             self.get_logger().info(
                 f"Received initial position from {slave_ns}: "
-                f"({initial_x}, {initial_y})"
+                f"({initial_x}, {initial_y}) with orientation {orientation}"
             )
             # Ripartizione del grafo e assegnazione dei waypoint poiché ora abbiamo la posizione iniziale
             self.repartition_and_assign_waypoints()
@@ -213,6 +205,7 @@ class MasterNavigationNode(Node):
             slave_state.last_seen_time = current_time
             slave_state.initial_x = initial_x
             slave_state.initial_y = initial_y
+            slave_state.initial_orientation = orientation
             self.slaves[slave_ns] = slave_state
             self.get_logger().info(f"Created publisher for slave: {slave_ns}")
 
@@ -256,11 +249,6 @@ class MasterNavigationNode(Node):
             self.get_logger().error(f"Invalid navigation status message: {e}")
             return
 
-        # self.get_logger().info(
-        #     f"Received status from {slave_ns}: {status}, "
-        #     f"Waypoint: {current_waypoint}, Time Taken: {time_taken}s, Error: {error_message}"
-        # )
-
         current_time = self.get_clock().now().nanoseconds / 1e9
 
         if slave_ns in self.slaves:
@@ -268,24 +256,54 @@ class MasterNavigationNode(Node):
             slave.last_seen_time = current_time
 
             if status == "reached":
-                # Slave ha raggiunto il waypoint corrente, assegna il successivo
+                # Rimuovi il nodo dal set dei nodi occupati
+                if current_waypoint in self.occupied_nodes:
+                    self.occupied_nodes.remove(current_waypoint)
+                    self.get_logger().info(f"Node {current_waypoint} is now free.")
+                else:
+                    self.get_logger().warn(f"Node {current_waypoint} was not marked as occupied.")
+
                 self.get_logger().info(f"Slave {slave_ns} has reached waypoint {current_waypoint}.")
                 slave.current_waypoint_index += 1
-                self.assign_next_waypoint(slave)
+                slave.waiting = False  # Lo slave non è più in attesa
+                self.assign_next_waypoint(slave_ns)
+
+                # Dopo aver assegnato il prossimo waypoint, prova a assegnare waypoint agli slave in attesa
+                self.assign_waiting_slaves()
+
+                # Controlla se tutti i waypoint sono stati raggiunti per determinare il completamento del percorso
+                if self.check_all_waypoints_reached():
+                    self.get_logger().info("All DCPP routes have been completed. Fleet navigation is finished.")
+
             elif status == "error":
                 # Gestione dello stato di errore
                 self.get_logger().error(f"Slave {slave_ns} encountered an error: {error_message}")
-                # Implementa la logica di retry o gestione degli errori se necessario
-                # Per ora, rimuoviamo lo slave
+                # Rimuovi il nodo dal set dei nodi occupati se necessario
+                if current_waypoint in self.occupied_nodes:
+                    self.occupied_nodes.remove(current_waypoint)
+                    self.get_logger().info(f"Node {current_waypoint} is now free due to error.")
+                # Rimuovi lo slave
                 del self.slaves[slave_ns]
                 self.get_logger().warn(f"Removing slave {slave_ns} due to error.")
                 self.repartition_and_assign_waypoints()
         else:
             self.get_logger().warn(f"Received status from unknown slave {slave_ns}.")
 
+    def check_all_waypoints_reached(self):
+        """
+        Controlla se tutti i waypoints assegnati agli slave sono stati raggiunti.
+
+        Returns:
+            bool: True se tutti i waypoints sono stati raggiunti, False altrimenti.
+        """
+        for slave in self.slaves.values():
+            if slave.current_waypoint_index < len(slave.assigned_waypoints):
+                return False
+        return True
+
     def repartition_and_assign_waypoints(self):
         """
-        Partiziona il grafo di navigazione in base al numero di slave attivi e assegna waypoint a ciascuno slave.
+        Partiziona il grafo di navigazione in base al numero di slave attivi e assegna un percorso DCPP a ciascuno slave.
         Calcola il percorso DCPP (circuito Euleriano) per ogni sottografo.
         """
         num_slaves = len(self.slaves)
@@ -324,39 +342,91 @@ class MasterNavigationNode(Node):
             self.get_logger().error("Number of subgraphs does not match number of active slaves.")
             return
 
-        # Assegna ogni sottografo a uno slave
+        # Assegna un percorso DCPP a ciascuno slave
         for idx, slave_ns in enumerate(slaves_sorted):
             subgraph = subgraphs[idx]
+            
+            # Estrai i waypoint dal sottografo
             waypoints = self.extract_waypoints(subgraph)
-
-            # Verifica che lo slave abbia una posizione iniziale
-            slave = self.slaves[slave_ns]
-            if slave.initial_x is not None and slave.initial_y is not None:
-                # Assicurati che il primo waypoint sia la posizione iniziale dello slave
-                # Trova il waypoint più vicino alla posizione iniziale
-                min_distance = float('inf')
-                initial_wp = None
-                for wp in waypoints:
-                    distance = math.hypot(wp['x'] - slave.initial_x, wp['y'] - slave.initial_y)
-                    if distance < min_distance:
-                        min_distance = distance
-                        initial_wp = wp
-                if initial_wp:
-                    # Riordina i waypoints in modo che initial_wp sia il primo
-                    waypoints = [initial_wp] + [wp for wp in waypoints if wp != initial_wp]
-            else:
-                self.get_logger().warn(f"Slave {slave_ns} lacks initial position data.")
-
-            # Calcola il percorso DCPP (circuito Euleriano) per il sottografo
+            
+            # Calcola il percorso DCPP passando waypoints, subgraph e logger
             dcpp_route = calculate_dcpp_route(waypoints, subgraph, self.get_logger())
+            ordered_route = dcpp_route  # Supponendo che calculate_dcpp_route ritorni il percorso ordinato
 
-            # Stampa del percorso DCPP calcolato
-            # self.print_dcpp_route(slave_ns, dcpp_route)
-  
-            # Assegna il percorso allo slave
-            self.assign_route_to_slave(slave_ns, dcpp_route)
+            # Log del percorso DCPP calcolato
+            self.get_logger().info(f"DCPP Route for {slave_ns}:")
+            for wp in ordered_route:
+                self.get_logger().info(f"  {wp}")
+
+            # Assegna i waypoints DCPP allo slave
+            slave = self.slaves[slave_ns]
+            slave.assigned_waypoints = ordered_route
+            self.assign_next_waypoint(slave_ns)
 
         self.partitioning_done = True
+
+    def assign_next_waypoint(self, slave_ns):
+        """
+        Assegna il prossimo waypoint nella coda allo slave.
+
+        Args:
+            slave_ns (str): Namespace dello slave robot.
+        """
+        slave = self.slaves[slave_ns]
+        if slave.current_waypoint_index < len(slave.assigned_waypoints):
+            waypoint = slave.assigned_waypoints[slave.current_waypoint_index]
+            node_label = waypoint['label']
+
+            if node_label in self.occupied_nodes:
+                self.get_logger().warn(f"Node {node_label} is already occupied. Cannot assign to slave {slave_ns}.")
+                slave.waiting = True  # Mette lo slave in attesa
+                return
+
+            waypoint_msg = {
+                'label': waypoint['label'],
+                'x': waypoint['x'],
+                'y': waypoint['y'],
+                'orientation': orientation_rad_to_str(waypoint['orientation'])  # Assicurati che questa funzione sia definita
+            }
+            msg = String()
+            msg.data = json.dumps(waypoint_msg)
+            slave.publisher.publish(msg)
+            self.occupied_nodes.add(node_label)  # Segna il nodo come occupato
+            self.get_logger().info(f"Assigned waypoint to {slave.slave_ns}: {waypoint_msg}")
+        else:
+            # Tutti i waypoint sono stati assegnati, fine del percorso
+            self.get_logger().info(f"All waypoints have been assigned to {slave.slave_ns}. Route completed.")
+
+    def assign_waiting_slaves(self):
+        """
+        Assegna i waypoint agli slave che sono in attesa.
+        """
+        for slave_ns in sorted(self.slaves.keys()):
+            slave = self.slaves[slave_ns]
+            if slave.waiting:
+                if slave.current_waypoint_index < len(slave.assigned_waypoints):
+                    waypoint = slave.assigned_waypoints[slave.current_waypoint_index]
+                    node_label = waypoint['label']
+
+                    if node_label not in self.occupied_nodes:
+                        # Assegna il waypoint
+                        waypoint_msg = {
+                            'label': waypoint['label'],
+                            'x': waypoint['x'],
+                            'y': waypoint['y'],
+                            'orientation': orientation_rad_to_str(waypoint['orientation'])  # Assicurati che questa funzione sia definita
+                        }
+                        msg = String()
+                        msg.data = json.dumps(waypoint_msg)
+                        slave.publisher.publish(msg)
+                        self.occupied_nodes.add(node_label)  # Segna il nodo come occupato
+                        self.get_logger().info(f"Assigned waypoint to {slave.slave_ns}: {waypoint_msg}")
+                        slave.waiting = False  # Rimuove lo stato di attesa
+                    else:
+                        self.get_logger().warn(f"Node {node_label} is still occupied. Slave {slave.slave_ns} remains in waiting state.")
+                else:
+                    self.get_logger().info(f"All waypoints have been assigned to {slave.slave_ns}. Route completed.")
+                    slave.waiting = False
 
     def print_subgraphs(self, subgraphs):
         """
@@ -380,19 +450,6 @@ class MasterNavigationNode(Node):
                 self.get_logger().info(f"    Da {u} a {v}, Peso: {weight}")
         self.get_logger().info("----- Fine dei Sottografi -----")
 
-    def print_dcpp_route(self, slave_ns, route):
-        """
-        Stampa il percorso DCPP calcolato per uno slave.
-
-        Args:
-            slave_ns (str): Namespace dello slave.
-            route (list of dict): Percorso DCPP calcolato.
-        """
-        self.get_logger().info(f"----- DCPP Route for {slave_ns} -----")
-        for idx, wp in enumerate(route):
-            self.get_logger().info(f"  Waypoint {idx+1}: {wp['label']} at ({wp['x']}, {wp['y']})")
-        self.get_logger().info(f"----- End of DCPP Route for {slave_ns} -----")
-
     def extract_waypoints(self, subgraph):
         """
         Estrae i waypoint da un sottografo.
@@ -414,86 +471,72 @@ class MasterNavigationNode(Node):
             waypoints.append(waypoint)
         return waypoints
 
-    def assign_route_to_slave(self, slave_ns, route):
-        """
-        Assegna un percorso di waypoint a uno slave specifico.
-
-        Args:
-            slave_ns (str): Namespace dello slave robot.
-            route (list of dict): Lista ordinata di waypoint.
-        """
-        if slave_ns not in self.slaves:
-            self.get_logger().error(f"No slave state found for {slave_ns}. Cannot assign route.")
-            return
-
-        slave = self.slaves[slave_ns]
-        slave.assigned_waypoints = route.copy()
-        slave.current_waypoint_index = 0
-
-        # Log dettagliato del percorso assegnato
-        # self.get_logger().info(f"Assigned DCPP route to {slave_ns}. Total waypoints: {len(route)}")
-
-        # Assegna il primo waypoint 
-        self.assign_next_waypoint(slave)
-
-    def assign_next_waypoint(self, slave):
-        """
-        Assegna il prossimo waypoint nella coda allo slave.
-
-        Args:
-            slave (SlaveState): Lo slave a cui assegnare il waypoint.
-        """
-        if slave.current_waypoint_index < len(slave.assigned_waypoints):
-            waypoint = slave.assigned_waypoints[slave.current_waypoint_index]
-            waypoint_msg = {
-                'label': waypoint['label'],
-                'x': waypoint['x'],
-                'y': waypoint['y'],
-                'orientation': orientation_rad_to_str(waypoint['orientation'])  # Modificato
-            }
-            msg = String()
-            msg.data = json.dumps(waypoint_msg)
-            slave.publisher.publish(msg)
-            self.get_logger().info(f"Assigned waypoint to {slave.slave_ns}: {waypoint_msg}")
-        else:
-            # Tutti i waypoint sono stati assegnati, fine del percorso
-            self.get_logger().info(f"All waypoints have been assigned to {slave.slave_ns}. Route completed.")
-
-    def print_current_status(self):
-        """
-        Stampa lo stato attuale degli slave attivi.
-        """
-        num_active_slaves = len(self.slaves)
-        self.get_logger().info(f"Current active slaves: {num_active_slaves}")
-        for slave_ns in sorted(self.slaves.keys()):
-            slave = self.slaves[slave_ns]
-            status = "Assigned" if slave.current_waypoint_index < len(slave.assigned_waypoints) else "Completed"
-            self.get_logger().info(f"Slave {slave_ns}: Status: {status}")
-
     def timer_callback(self):
         """
-        Callback del timer per monitorare lo stato degli slave e rimuovere quelli inattivi.
+        Periodic callback to perform regular checks and manage the navigation fleet.
         """
-        current_time = self.get_clock().now().nanoseconds / 1e9  # Ottieni il tempo corrente in secondi
-        inactive_slaves = []
+        self.get_logger().debug("Timer callback triggered.")
+        # Verifica se ci sono slave inattivi e rimuovili
+        self.check_slaves_timeout()
+        # Assegna waypoint agli slave in attesa, se possibile
+        self.assign_waiting_slaves()
 
-        # Controlla se qualche slave è inattivo
-        for slave_ns, slave in list(self.slaves.items()):  # Usa list() per evitare RuntimeError durante la modifica del dizionario
+    def check_slaves_timeout(self):
+        """
+        Controlla se ci sono slave inattivi e li rimuove se superano il timeout.
+        """
+        current_time = self.get_clock().now().nanoseconds / 1e9
+        slaves_to_remove = []
+
+        for slave_ns, slave in self.slaves.items():
             if current_time - slave.last_seen_time > self.timeout:
-                self.get_logger().warn(f"Slave {slave_ns} has been inactive for more than {self.timeout} seconds.")
-                inactive_slaves.append(slave_ns)
+                self.get_logger().warn(f"Slave {slave_ns} has timed out. Removing from active slaves.")
+                slaves_to_remove.append(slave_ns)
 
-        # Rimuovi gli slave inattivi
-        for slave_ns in inactive_slaves:
-            self.get_logger().warn(f"Removing inactive slave: {slave_ns}")
+        for slave_ns in slaves_to_remove:
+            # Rimuovi il nodo occupato se lo slave era assegnato a un waypoint
+            if slave_ns in self.slaves:
+                slave = self.slaves[slave_ns]
+                if slave.current_waypoint_index < len(slave.assigned_waypoints):
+                    waypoint = slave.assigned_waypoints[slave.current_waypoint_index]
+                    node_label = waypoint['label']
+                    if node_label in self.occupied_nodes:
+                        self.occupied_nodes.remove(node_label)
+                        self.get_logger().info(f"Node {node_label} is now free due to slave timeout.")
+
             del self.slaves[slave_ns]
+            self.get_logger().warn(f"Removed slave {slave_ns} due to timeout.")
+
+        if slaves_to_remove:
+            # Ripartizione del grafo e assegnazione dei waypoint poiché il numero di slave è cambiato
             self.repartition_and_assign_waypoints()
 
-        # Stampa lo stato corrente degli slave
-        # self.print_current_status()
+def load_full_graph_from_data(graph_data):
+    """
+    Carica un grafo NetworkX da un dizionario contenente nodi e archi.
 
-        # **Importante:** Non assegnare waypoint in questa callback.
-        # L'assegnazione dei waypoint è gestita nella navigation_status_callback quando lo slave conferma il raggiungimento di un waypoint.
+    Args:
+        graph_data (dict): Dizionario con 'nodes' e 'edges'.
+
+    Returns:
+        nx.DiGraph: Il grafo diretto caricato.
+    """
+    G = nx.DiGraph()
+
+    for node in graph_data['nodes']:
+        label = node['label']
+        x = node['x']
+        y = node['y']
+        orientation = node.get('orientation', 0.0)
+        G.add_node(label, x=x, y=y, orientation=orientation)
+
+    for edge in graph_data['edges']:
+        u = edge['from']
+        v = edge['to']
+        weight = edge.get('weight', 1.0)
+        G.add_edge(u, v, weight=weight)
+
+    return G
 
 def main(args=None):
     rclpy.init(args=args)
