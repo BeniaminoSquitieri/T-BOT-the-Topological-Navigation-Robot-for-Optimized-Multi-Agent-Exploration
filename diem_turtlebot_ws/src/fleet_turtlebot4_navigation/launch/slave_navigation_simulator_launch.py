@@ -16,12 +16,12 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             'initial_x',
-            default_value='0.0',
+            default_value='2.3077550000000002',
             description='Posizione iniziale X'
         ),
         DeclareLaunchArgument(
             'initial_y',
-            default_value='0.0',
+            default_value='-0.5235470000000007',
             description='Posizione iniziale Y'
         ),
         DeclareLaunchArgument(
