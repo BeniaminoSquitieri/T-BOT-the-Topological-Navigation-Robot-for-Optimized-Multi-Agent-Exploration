@@ -97,7 +97,7 @@ class MasterNavigationNode(Node):
         self.lock = threading.Lock()
 
         # Log dell'inizializzazione del master
-        self.get_logger().info("Master node initialized.")
+        # self.get_logger().info("Master node initialized.")
 
     def publish_navigation_graph(self):
         """
@@ -116,7 +116,7 @@ class MasterNavigationNode(Node):
         }
         graph_msg.data = json.dumps(graph_data)
         self.graph_publisher.publish(graph_msg)
-        self.get_logger().info("Published navigation graph.")
+        # self.get_logger().info("Published navigation graph.")
 
     def publish_heartbeat(self):
         """
@@ -140,7 +140,7 @@ class MasterNavigationNode(Node):
         current_time = self.get_clock().now().nanoseconds / 1e9
 
         if slave_ns not in self.slaves:
-            self.get_logger().info(f"New slave registered: {slave_ns}")
+            # self.get_logger().info(f"New slave registered: {slave_ns}")
 
             # Crea un publisher per inviare comandi di navigazione allo slave
             publisher = self.create_publisher(String, f"/{slave_ns}/navigation_commands", 10)
@@ -169,7 +169,7 @@ class MasterNavigationNode(Node):
             self.get_logger().error(f"Failed to write received message to log: {e}")
 
         # Log del messaggio ricevuto
-        self.get_logger().info(f"Received initial position message: {msg.data}")
+        # self.get_logger().info(f"Received initial position message: {msg.data}")
 
         try:
             # Parsing del messaggio JSON
@@ -213,7 +213,7 @@ class MasterNavigationNode(Node):
             self.repartition_and_assign_waypoints()
 
         # Stampa tutte le posizioni iniziali degli slave
-        self.print_all_initial_positions()
+        # self.print_all_initial_positions() 
 
     def print_all_initial_positions(self):
         """
@@ -266,14 +266,17 @@ class MasterNavigationNode(Node):
                 self.get_logger().info(f"Slave {slave_ns} has reached waypoint {current_waypoint}.")
                 slave.current_waypoint_index += 1
                 slave.waiting = False  # Lo slave non è più in attesa
+
+                # Assegna il prossimo waypoint
                 self.assign_next_waypoint(slave_ns)
 
                 # Dopo aver assegnato il prossimo waypoint, prova a assegnare waypoint agli slave in attesa
                 self.assign_waiting_slaves()
 
-                # Controlla se tutti i waypoint sono stati raggiunti per determinare il completamento del percorso
-                if self.check_all_waypoints_reached():
-                    self.get_logger().info("All DCPP routes have been completed. Fleet navigation is finished.")
+                # **Rimozione del Controllo di Completamento Totale**
+                # Commentato per permettere il loop continuo dei percorsi DCPP
+                # if self.check_all_waypoints_reached():
+                #     self.get_logger().info("All DCPP routes have been completed. Fleet navigation is finished.")
 
             elif status == "error":
                 # Gestione dello stato di errore
@@ -329,7 +332,7 @@ class MasterNavigationNode(Node):
             subgraphs = partition_graph(self.full_graph, num_slaves, start_positions=start_positions)
             self.get_logger().info(f"Partitioned the graph into {len(subgraphs)} subgraphs.")
             # Stampa i sottografi
-            self.print_subgraphs(subgraphs)
+            # self.print_subgraphs(subgraphs)
         except ValueError as e:
             self.get_logger().error(f"Failed to partition graph: {e}")
             return
@@ -373,29 +376,34 @@ class MasterNavigationNode(Node):
             slave_ns (str): Namespace dello slave robot.
         """
         slave = self.slaves[slave_ns]
-        if slave.current_waypoint_index < len(slave.assigned_waypoints):
-            waypoint = slave.assigned_waypoints[slave.current_waypoint_index]
-            node_label = waypoint['label']
+        if len(slave.assigned_waypoints) == 0:
+            self.get_logger().warn(f"No waypoints assigned to slave {slave_ns}.")
+            return
 
-            if node_label in self.occupied_nodes:
-                self.get_logger().warn(f"Node {node_label} is already occupied. Cannot assign to slave {slave_ns}.")
-                slave.waiting = True  # Mette lo slave in attesa
-                return
+        # **Modifica per Supportare il Loop Continuo**
+        waypoint = slave.assigned_waypoints[slave.current_waypoint_index % len(slave.assigned_waypoints)]
+        node_label = waypoint['label']
 
-            waypoint_msg = {
-                'label': waypoint['label'],
-                'x': waypoint['x'],
-                'y': waypoint['y'],
-                'orientation': orientation_rad_to_str(waypoint['orientation'])  # Assicurati che questa funzione sia definita
-            }
-            msg = String()
-            msg.data = json.dumps(waypoint_msg)
-            slave.publisher.publish(msg)
-            self.occupied_nodes.add(node_label)  # Segna il nodo come occupato
-            self.get_logger().info(f"Assigned waypoint to {slave.slave_ns}: {waypoint_msg}")
-        else:
-            # Tutti i waypoint sono stati assegnati, fine del percorso
-            self.get_logger().info(f"All waypoints have been assigned to {slave.slave_ns}. Route completed.")
+        if node_label in self.occupied_nodes:
+            self.get_logger().warn(f"Node {node_label} is already occupied. Cannot assign to slave {slave_ns}.")
+            slave.waiting = True  # Mette lo slave in attesa
+            return
+
+        waypoint_msg = {
+            'label': waypoint['label'],
+            'x': waypoint['x'],
+            'y': waypoint['y'],
+            'orientation': orientation_rad_to_str(waypoint['orientation'])  # Assicurati che questa funzione sia definita
+        }
+        msg = String()
+        msg.data = json.dumps(waypoint_msg)
+        slave.publisher.publish(msg)
+        self.occupied_nodes.add(node_label)  # Segna il nodo come occupato
+        self.get_logger().info(f"Assigned waypoint to {slave.slave_ns}: {waypoint_msg}")
+
+        # **Opzionale: Limitare l'Indice per Prevenire Crescita Indefinita**
+        if slave.current_waypoint_index >= len(slave.assigned_waypoints):
+            slave.current_waypoint_index = 0  # Resetta l'indice per ricominciare il loop
 
     def assign_waiting_slaves(self):
         """
@@ -404,29 +412,40 @@ class MasterNavigationNode(Node):
         for slave_ns in sorted(self.slaves.keys()):
             slave = self.slaves[slave_ns]
             if slave.waiting:
-                if slave.current_waypoint_index < len(slave.assigned_waypoints):
-                    waypoint = slave.assigned_waypoints[slave.current_waypoint_index]
-                    node_label = waypoint['label']
+                if len(slave.assigned_waypoints) == 0:
+                    self.get_logger().warn(f"No waypoints assigned to slave {slave_ns}.")
+                    continue
 
-                    if node_label not in self.occupied_nodes:
-                        # Assegna il waypoint
-                        waypoint_msg = {
-                            'label': waypoint['label'],
-                            'x': waypoint['x'],
-                            'y': waypoint['y'],
-                            'orientation': orientation_rad_to_str(waypoint['orientation'])  # Assicurati che questa funzione sia definita
-                        }
-                        msg = String()
-                        msg.data = json.dumps(waypoint_msg)
-                        slave.publisher.publish(msg)
-                        self.occupied_nodes.add(node_label)  # Segna il nodo come occupato
-                        self.get_logger().info(f"Assigned waypoint to {slave.slave_ns}: {waypoint_msg}")
-                        slave.waiting = False  # Rimuove lo stato di attesa
-                    else:
-                        self.get_logger().warn(f"Node {node_label} is still occupied. Slave {slave.slave_ns} remains in waiting state.")
+                waypoint = slave.assigned_waypoints[slave.current_waypoint_index % len(slave.assigned_waypoints)]
+                node_label = waypoint['label']
+
+                if node_label not in self.occupied_nodes:
+                    # Assegna il waypoint
+                    waypoint_msg = {
+                        'label': waypoint['label'],
+                        'x': waypoint['x'],
+                        'y': waypoint['y'],
+                        'orientation': orientation_rad_to_str(waypoint['orientation'])  # Assicurati che questa funzione sia definita
+                    }
+                    msg = String()
+                    msg.data = json.dumps(waypoint_msg)
+                    slave.publisher.publish(msg)
+                    self.occupied_nodes.add(node_label)  # Segna il nodo come occupato
+                    self.get_logger().info(f"Assigned waypoint to {slave.slave_ns}: {waypoint_msg}")
+                    slave.waiting = False  # Rimuove lo stato di attesa
+
+                    # Incrementa l'indice del waypoint
+                    slave.current_waypoint_index += 1
+
+                    # **Opzionale: Limitare l'Indice per Prevenire Crescita Indefinita**
+                    if slave.current_waypoint_index >= len(slave.assigned_waypoints):
+                        slave.current_waypoint_index = 0  # Resetta l'indice per ricominciare il loop
                 else:
-                    self.get_logger().info(f"All waypoints have been assigned to {slave.slave_ns}. Route completed.")
-                    slave.waiting = False
+                    self.get_logger().warn(f"Node {node_label} is still occupied. Slave {slave.slave_ns} remains in waiting state.")
+            else:
+                # **Rimuovi il Log di Completamento del Percorso**
+                # Questo non è più necessario poiché il percorso ciclico continua
+                pass
 
     def print_subgraphs(self, subgraphs):
         """
@@ -498,7 +517,7 @@ class MasterNavigationNode(Node):
             if slave_ns in self.slaves:
                 slave = self.slaves[slave_ns]
                 if slave.current_waypoint_index < len(slave.assigned_waypoints):
-                    waypoint = slave.assigned_waypoints[slave.current_waypoint_index]
+                    waypoint = slave.assigned_waypoints[slave.current_waypoint_index % len(slave.assigned_waypoints)]
                     node_label = waypoint['label']
                     if node_label in self.occupied_nodes:
                         self.occupied_nodes.remove(node_label)

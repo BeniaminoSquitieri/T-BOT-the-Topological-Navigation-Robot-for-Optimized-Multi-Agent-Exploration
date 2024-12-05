@@ -299,7 +299,7 @@ class SlaveNavigationSimulator(Node):
         if isinstance(waypoint_data.get('orientation'), str):
             waypoint_data['orientation'] = self.orientation_conversion(waypoint_data['orientation'])
 
-        self.get_logger().info(f"[{self.robot_namespace}] Received waypoint: {waypoint_data}")
+        # self.get_logger().info(f"[{self.robot_namespace}] Received waypoint: {waypoint_data}")
 
         # Avvia la simulazione della navigazione in un thread separato per non bloccare il nodo
         threading.Thread(target=self.simulate_navigation, args=(waypoint_data,)).start()
@@ -314,10 +314,10 @@ class SlaveNavigationSimulator(Node):
         orientation_rad = waypoint['orientation']  # Ora già in radianti
 
         # Log del compito di navigazione
-        self.get_logger().info(f"[{self.robot_namespace}] Simulating navigation to {label} at ({x}, {y}) with orientation {orientation_rad} radians.")
+        # self.get_logger().info(f"[{self.robot_namespace}] Simulating navigation to {label} at ({x}, {y}) with orientation {orientation_rad} radians.")
 
         # Simula il tempo di navigazione (es. 5 secondi)
-        simulated_navigation_time = 1.0
+        simulated_navigation_time = 10.0
         time.sleep(simulated_navigation_time)
 
         # Simula il risultato della navigazione
@@ -355,7 +355,7 @@ class SlaveNavigationSimulator(Node):
         msg = String()
         msg.data = json.dumps(status_data)
         self.status_publisher.publish(msg)
-        self.get_logger().info(f"[{self.robot_namespace}] Published status: {status_data}")
+        # self.get_logger().info(f"[{self.robot_namespace}] Published status: {status_data}")
 
     def orientation_conversion(self, orientation_input):
         """

@@ -64,10 +64,10 @@ def calculate_dcpp_route(waypoints, subgraph, logger):
     label_to_wp = {wp['label']: wp for wp in waypoints}
     ordered_route = [label_to_wp[label] for label in route_labels if label in label_to_wp]
 
-    # Log the calculated route
-    logger.info("Calculated DCPP route:")
-    for wp in ordered_route:
-        logger.info(f" - {wp['label']} at ({wp['x']}, {wp['y']}) ")
+    # # Log the calculated route
+    # logger.info("Calculated DCPP route:")
+    # for wp in ordered_route:
+    #     logger.info(f" - {wp['label']} at ({wp['x']}, {wp['y']}) ")
     
     # **Aggiunta della stampa del percorso DCPP**
     # print("\n===== Calculated DCPP Route =====")

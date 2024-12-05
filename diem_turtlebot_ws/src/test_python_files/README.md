@@ -26,7 +26,8 @@ python dcpp_test.py --start_node <node_label> --graph_path <path_to_graph.json>
 For example:
 
 ```bash
-python3 dcpp_test.py --start_node node_10 --graph_path /home/beniamino/turtlebot4/diem_turtlebot_ws/src/test_python_files/subgraphs/subgraph_2.json
+python3 dcpp_test.py --start_node node_5 --graph_path /home/beniamino/turtlebot4/diem_turtlebot_ws/src/fleet_turtlebot4_navigation/map/navigation_hardware_limitation.json
+
 
 ```
 
