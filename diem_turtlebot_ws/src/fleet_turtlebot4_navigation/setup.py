@@ -32,6 +32,7 @@ setup(
             'graph_partitioning = fleet_turtlebot4_navigation.graph_partitioning:main',
             'path_calculation = fleet_turtlebot4_navigation.path_calculation:main',
             'slave_navigation_node = fleet_turtlebot4_navigation.slave_navigation_node:main',
+            'publish_waypoints = fleet_turtlebot4_navigation.publish_waypoints:main'
         ],
     },
 )

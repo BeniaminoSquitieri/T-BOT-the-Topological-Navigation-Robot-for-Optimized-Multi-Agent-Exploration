@@ -330,8 +330,8 @@ class SlaveNavigationSimulator(Node):
         # Log del compito di navigazione
         self.get_logger().info(f"[{self.robot_namespace}] Simulating navigation to {label} at ({x}, {y}) with orientation {orientation_rad} radians.")
 
-        # Simula il tempo di navigazione (es. 5 secondi)
-        simulated_navigation_time = 5.0
+        # Simula il tempo di navigazione s(es. 5 secondi)
+        simulated_navigation_time = 15.0
         time.sleep(simulated_navigation_time)
 
         # Simula il risultato della navigazione

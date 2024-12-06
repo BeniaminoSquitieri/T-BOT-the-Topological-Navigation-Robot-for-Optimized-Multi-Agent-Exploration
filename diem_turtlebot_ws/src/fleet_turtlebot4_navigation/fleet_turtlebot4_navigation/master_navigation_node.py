@@ -93,9 +93,6 @@ class MasterNavigationNode(Node):
         # Aggiungi un set per tracciare i nodi attualmente occupati
         self.occupied_nodes = set()
 
-        # Lock per gestire accessi concorrenti
-        self.lock = threading.Lock()
-
         # Log dell'inizializzazione del master
         # self.get_logger().info("Master node initialized.")
 
@@ -234,10 +231,11 @@ class MasterNavigationNode(Node):
         """
         Gestisce il feedback degli slave riguardo lo stato di navigazione.
         Si aspetta una stringa JSON con 'robot_namespace', 'status', 'current_waypoint', 'time_taken', 'error_message'.
-
-        Args:
-            msg (String): Messaggio contenente lo stato di navigazione dello slave.
         """
+
+        # Stampa il messaggio raw ricevuto
+        self.get_logger().info(f"Received navigation status message: {msg.data}")
+
         try:
             data = json.loads(msg.data)
             slave_ns = data['robot_namespace']
@@ -248,6 +246,9 @@ class MasterNavigationNode(Node):
         except (json.JSONDecodeError, KeyError) as e:
             self.get_logger().error(f"Invalid navigation status message: {e}")
             return
+
+        # Stampa il contenuto decodificato del messaggio
+        self.get_logger().info(f"Decoded navigation status data: {data}")
 
         current_time = self.get_clock().now().nanoseconds / 1e9
 
@@ -270,13 +271,8 @@ class MasterNavigationNode(Node):
                 # Assegna il prossimo waypoint
                 self.assign_next_waypoint(slave_ns)
 
-                # Dopo aver assegnato il prossimo waypoint, prova a assegnare waypoint agli slave in attesa
+                # Dopo aver assegnato il prossimo waypoint, prova ad assegnare waypoint agli slave in attesa
                 self.assign_waiting_slaves()
-
-                # **Rimozione del Controllo di Completamento Totale**
-                # Commentato per permettere il loop continuo dei percorsi DCPP
-                # if self.check_all_waypoints_reached():
-                #     self.get_logger().info("All DCPP routes have been completed. Fleet navigation is finished.")
 
             elif status == "error":
                 # Gestione dello stato di errore
@@ -288,9 +284,11 @@ class MasterNavigationNode(Node):
                 # Rimuovi lo slave
                 del self.slaves[slave_ns]
                 self.get_logger().warn(f"Removing slave {slave_ns} due to error.")
+                # Ripartizione del grafo
                 self.repartition_and_assign_waypoints()
         else:
             self.get_logger().warn(f"Received status from unknown slave {slave_ns}.")
+
 
     def check_all_waypoints_reached(self):
         """

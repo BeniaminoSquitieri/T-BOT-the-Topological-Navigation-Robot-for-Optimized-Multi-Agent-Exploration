@@ -13,7 +13,7 @@ def generate_launch_description():
             'robot_namespace',
             default_value='robot_111',
             description='Namespace del robot'
-        ),
+        ), #node 5
         launch.actions.DeclareLaunchArgument(
             'initial_x',
             default_value='-2.307755',
