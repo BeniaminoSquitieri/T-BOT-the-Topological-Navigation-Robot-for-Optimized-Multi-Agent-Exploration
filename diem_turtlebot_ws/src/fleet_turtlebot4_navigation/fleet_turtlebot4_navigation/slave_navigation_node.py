@@ -110,7 +110,7 @@ class SlaveNavigationNode(Node):
         self.heartbeat_publisher = self.create_publisher(String, '/slave_heartbeat', 10)
         # /master_heartbeat: riceve heartbeat dal master per verificare che sia attivo
         self.master_heartbeat_subscriber = self.create_subscription(
-            String, '/master_heartbeat', self.master_heartbeat_callback, 2
+            String, '/master_heartbeat', self.master_heartbeat_callback, 10
         )
         # /slave_heartbeat: riceve heartbeat dagli altri slave
         self.slave_heartbeat_subscriber = self.create_subscription(
@@ -127,7 +127,7 @@ class SlaveNavigationNode(Node):
         # Timer per pubblicare regolarmente l'heartbeat (ogni 1 secondo)
         self.heartbeat_timer = self.create_timer(1.0, self.publish_heartbeat)
         # Timer per controllare se il master è ancora vivo (ogni 10 secondi)
-        self.master_check_timer = self.create_timer(10.0, self.check_master_alive)
+        # self.master_check_timer = self.create_timer(10.0, self.check_master_alive)
         # Timer per controllare se gli altri slave sono ancora vivi (ogni 2 secondi)
         self.slave_check_timer = self.create_timer(2.0, self.check_slave_alive)
 
