@@ -13,15 +13,20 @@ def generate_launch_description():
             'robot_namespace',
             default_value='robot_111',
             description='Namespace del robot'
+        ), #node 5
+        launch.actions.DeclareLaunchArgument(
+            'initial_x',
+            default_value='-2.307755',
+            description='Posizione iniziale X'
         ),
         launch.actions.DeclareLaunchArgument(
-            'initial_node_label',
-            default_value='node_5',  # Nome del nodo iniziale del grafo
-            description='Nome del nodo iniziale dal quale estrarre posizione X e Y'
+            'initial_y',
+            default_value='-0.523547',
+            description='Posizione iniziale Y'
         ),
         launch.actions.DeclareLaunchArgument(
             'initial_orientation',
-            default_value='NORTH',  # Orientamento come stringa
+            default_value='NORTH',  # Passa l'orientamento come stringa
             description='Orientamento iniziale (NORTH, EAST, SOUTH, WEST)'
         ),
 
@@ -34,8 +39,13 @@ def generate_launch_description():
             output='screen',
             arguments=[
                 '--robot_namespace', launch.substitutions.LaunchConfiguration('robot_namespace'),
-                '--initial_node_label', launch.substitutions.LaunchConfiguration('initial_node_label'),
+                '--initial_x', launch.substitutions.LaunchConfiguration('initial_x'),
+                '--initial_y', launch.substitutions.LaunchConfiguration('initial_y'),
                 '--initial_orientation', launch.substitutions.LaunchConfiguration('initial_orientation'),
             ]
         )
     ])
+
+
+
+
