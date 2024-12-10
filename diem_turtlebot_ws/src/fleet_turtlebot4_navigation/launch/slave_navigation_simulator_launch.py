@@ -8,21 +8,16 @@ from launch_ros.actions import Node
 
 def generate_launch_description():
     return LaunchDescription([
-        # Dichiarazione degli argomenti di lancio
         DeclareLaunchArgument(
             'robot_namespace',
             default_value='robot_simulator',
             description='Namespace del robot'
         ),
+        # Non usiamo più initial_x e initial_y, ma initial_node_label
         DeclareLaunchArgument(
-            'initial_x',
-            default_value='2.3077550000000002',
-            description='Posizione iniziale X'
-        ),
-        DeclareLaunchArgument(
-            'initial_y',
-            default_value='-0.5235470000000007',
-            description='Posizione iniziale Y'
+            'initial_node_label',
+            default_value='node_1',
+            description='Etichetta del nodo iniziale in cui si trova il robot'
         ),
         DeclareLaunchArgument(
             'initial_orientation',
@@ -30,7 +25,6 @@ def generate_launch_description():
             description='Orientamento iniziale (NORTH, EAST, SOUTH, WEST)'
         ),
 
-        # Definizione del nodo SlaveNavigationSimulator
         Node(
             package='fleet_turtlebot4_navigation',
             executable='simulated_slave_navigation_node',  
@@ -39,8 +33,7 @@ def generate_launch_description():
             output='screen',
             arguments=[
                 '--robot_namespace', LaunchConfiguration('robot_namespace'),
-                '--initial_x', LaunchConfiguration('initial_x'),
-                '--initial_y', LaunchConfiguration('initial_y'),
+                '--initial_node_label', LaunchConfiguration('initial_node_label'),
                 '--initial_orientation', LaunchConfiguration('initial_orientation'),
             ]
         )
