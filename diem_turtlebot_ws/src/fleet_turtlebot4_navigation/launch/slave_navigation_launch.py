@@ -11,7 +11,7 @@ def generate_launch_description():
         # Dichiarazione dei parametri di lancio
         launch.actions.DeclareLaunchArgument(
             'robot_namespace',
-            default_value='robot_111',
+            default_value='turtlebot1',
             description='Namespace del robot'
         ),
         launch.actions.DeclareLaunchArgument(
