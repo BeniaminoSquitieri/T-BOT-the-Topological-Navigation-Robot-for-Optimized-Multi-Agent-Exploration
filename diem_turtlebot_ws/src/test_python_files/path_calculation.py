@@ -15,7 +15,7 @@ def calculate_dcpp_route(waypoints, subgraph, logger):
     Returns:
         list of dict: Una lista ordinata di waypoint che rappresenta il percorso DCPP.
     """
-    
+
     G = subgraph  # per comodità di lettura
 
     # Controllo se il grafo è fortemente connesso: condizione necessaria per la soluzione
@@ -109,6 +109,11 @@ def calculate_dcpp_route(waypoints, subgraph, logger):
     # Associazione delle label ai waypoint reali
     label_to_wp = {wp['label']: wp for wp in waypoints}
     ordered_route = [label_to_wp[label] for label in route_labels if label in label_to_wp]
+
+    # Log del percorso calcolato
+    logger.info("Calculated DCPP route (using min cost flow approach):")
+    for idx, wp in enumerate(ordered_route, start=1):
+        logger.info(f" - Waypoint {idx}: {wp['label']} at ({wp['x']}, {wp['y']}) Orientation: {wp['orientation']} radians")
 
     return ordered_route
 
