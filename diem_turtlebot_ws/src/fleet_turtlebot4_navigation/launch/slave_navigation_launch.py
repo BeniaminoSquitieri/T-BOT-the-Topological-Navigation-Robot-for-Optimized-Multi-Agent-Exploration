@@ -17,7 +17,7 @@ def generate_launch_description():
         launch.actions.DeclareLaunchArgument(
             'initial_node_label',
             default_value='node_5',  # Nome del nodo iniziale del grafo
-            description='Nome del nodo iniziale dal quale estrarre posizione X e Y'
+            description='Nome del nodo iniziale dal quale estrarre proosizione X e Y'
         ),
         launch.actions.DeclareLaunchArgument(
             'initial_orientation',
