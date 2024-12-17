@@ -10,33 +10,10 @@ import math  # For mathematical operations (e.g., pi, trigonometric functions)
 import threading  # For running certain tasks (like simulated navigation) in parallel threads
 import networkx as nx  # For creating and handling complex graphs (nodes, edges, attributes)
 
-# Placeholder implementations for the helper functions
-def partition_graph(graph, num_partitions, start_positions=None):
-    # Implementa la logica di partizionamento del grafo
-    # Questo è solo un esempio fittizio
-    subgraphs = []
-    nodes = list(graph.nodes())
-    partition_size = max(1, len(nodes) // num_partitions)
-    for i in range(num_partitions):
-        subgraph_nodes = nodes[i*partition_size:(i+1)*partition_size]
-        subgraph = graph.subgraph(subgraph_nodes).copy()
-        subgraphs.append(subgraph)
-    return subgraphs
-
-def calculate_dcpp_route(waypoints, subgraph, logger):
-    # Implementa la logica per calcolare la rotta DCPP
-    # Questo è solo un esempio fittizio
-    return waypoints
-
-def orientation_rad_to_str(orientation_rad):
-    # Converti radianti in stringhe orientamento
-    orientation_map = {
-        0.0: "NORTH",
-        -math.pi / 2: "EAST",
-        math.pi: "SOUTH",
-        math.pi / 2: "WEST"
-    }
-    return orientation_map.get(orientation_rad, "UNKNOWN")
+# Importing custom helper functions from local modules
+# These modules handle graph partitioning and route calculation (DCPP)
+from .graph_partitioning import load_full_graph, partition_graph
+from .path_calculation import calculate_dcpp_route, orientation_rad_to_str
 
 class SlaveState:
     """
@@ -159,7 +136,7 @@ class SlaveNavigationSimulator(Node):
         # Variabili per rilevare la presenza del master:
         self.master_alive = False
         self.last_master_heartbeat = time.time()
-        self.heartbeat_timeout = 5.0  # Dopo 5 secondi senza heartbeat del master, considera il master perso
+        self.heartbeat_timeout = 15.0  # Dopo 15 secondi senza heartbeat del master, considera il master perso
 
         # Dizionario degli slave attivi. Chiave: namespace dello slave, Valore: istanza di SlaveState
         self.active_slaves = {}
