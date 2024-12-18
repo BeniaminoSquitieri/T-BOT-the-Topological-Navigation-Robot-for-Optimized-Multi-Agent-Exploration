@@ -10,7 +10,7 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument(
             'robot_namespace',
-            default_value='robot_simulator',
+            default_value='turtlebot1',
             description='Namespace del robot'
         ),
         # Non usiamo più initial_x e initial_y, ma initial_node_label
