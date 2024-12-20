@@ -14,7 +14,7 @@ from turtlebot4_navigation.turtlebot4_navigator import TurtleBot4Navigator, Task
 
 # Importing custom functions for loading and partitioning the graph and for path calculations
 from .graph_partitioning import  partition_graph
-from .path_calculation import calculate_dcpp_route
+from .master.path_calculation import calculate_dcpp_route
 
 def load_full_graph_from_data(graph_data):
     """

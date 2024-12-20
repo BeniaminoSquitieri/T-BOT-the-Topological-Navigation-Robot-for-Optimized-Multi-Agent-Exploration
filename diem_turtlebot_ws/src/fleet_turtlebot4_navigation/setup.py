@@ -7,7 +7,7 @@ package_name = 'fleet_turtlebot4_navigation'
 setup(
     name=package_name,
     version='0.0.1',
-    packages=[package_name],
+    packages=[package_name, f"{package_name}.master", f"{package_name}.slave"],
     data_files=[
         # Include la directory launch
         (os.path.join('share', package_name, 'launch'), glob('launch/*.py')),
@@ -26,11 +26,8 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'master_navigation_node = fleet_turtlebot4_navigation.master_navigation_node:main',
-            'backup_master_navigation_node = fleet_turtlebot4_navigation.backup_master_navigation_node:main',
-            'simulated_slave_navigation_node = fleet_turtlebot4_navigation.simulated_slave_navigation_node:main',
-            'graph_partitioning = fleet_turtlebot4_navigation.graph_partitioning:main',
-            'path_calculation = fleet_turtlebot4_navigation.path_calculation:main',
+            'master_navigation_node = fleet_turtlebot4_navigation.master.master_navigation_node:main',
+            'simulated_slave_navigation_node = fleet_turtlebot4_navigation.slave.simulated_slave_navigation_node:main',
             'slave_navigation_node = fleet_turtlebot4_navigation.slave_navigation_node:main',
             'publish_waypoints = fleet_turtlebot4_navigation.publish_waypoints:main'
         ],
