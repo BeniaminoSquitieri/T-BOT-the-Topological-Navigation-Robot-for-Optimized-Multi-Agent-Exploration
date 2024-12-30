@@ -1,24 +1,28 @@
 #!/usr/bin/env python3
 
+import os
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import String
-import os
 
-# Import custom modules
-from fleet_turtlebot4_navigation.master.graph_utils import load_full_graph
-from fleet_turtlebot4_navigation.master.master_callbacks import MasterCallbacks
-from fleet_turtlebot4_navigation.master.heartbeat_manager import HeartbeatManager
-from fleet_turtlebot4_navigation.master.waypoint_manager import WaypointManager
+from .master_callbacks import MasterCallbacks
+from .heartbeat_manager import HeartbeatManager
+from .waypoint_manager import WaypointManager
+from .graph_utils import load_full_graph
+from .slave_state import SlaveState
 
 class MasterNavigationNode(Node, MasterCallbacks):
     def __init__(self):
-        super().__init__('master_navigation_node')
+        # Inizializza la classe Node
+        Node.__init__(self, 'master_navigation_node')
+        
+        # Inizializza la classe MasterCallbacks
+        MasterCallbacks.__init__(self)
 
         # Dichiarazione e recupero dei parametri
         self.declare_parameter(
             'graph_path',
-            '/home/beniamino/turtlebot4/diem_turtlebot_ws/src/fleet_turtlebot4_navigation/map/navigation_hardware_limitation.json'
+            '/home/utente/percorso_al_file/result_graph.json'
         )
         self.declare_parameter('check_interval', 2.0)
         self.declare_parameter('timeout', 150.0)
@@ -32,19 +36,18 @@ class MasterNavigationNode(Node, MasterCallbacks):
             self.get_logger().error(f"Graph file not found at {self.graph_path}")
             raise FileNotFoundError(f"Graph file not found at {self.graph_path}")
 
-        # Caricamento del grafo di navigazione
+        # Caricamento del grafo di navigazione (non diretto - MultiGraph)
         self.full_graph = load_full_graph(self.graph_path)
+        self.get_logger().info(f"Loaded undirected graph from {self.graph_path}.")
 
-        # Publishers e subscribers
+        # Publisher e subscriber
         self.graph_publisher = self.create_publisher(String, '/navigation_graph', 10)
-        self.graph_timer = self.create_timer(5.0, self.publish_navigation_graph)
+        self.graph_timer = self.create_timer(1.0, self.publish_navigation_graph)
 
         self.slave_registration_subscriber = self.create_subscription(
             String, '/slave_registration', self.slave_registration_callback, 10
         )
-        self.initial_position_subscriber = self.create_subscription(
-            String, '/slave_initial_positions', self.initial_position_callback, 10
-        )
+
         self.navigation_status_subscriber = self.create_subscription(
             String, '/navigation_status', self.navigation_status_callback, 10
         )
@@ -55,15 +58,16 @@ class MasterNavigationNode(Node, MasterCallbacks):
         # Inizializzazione di WaypointManager
         self.waypoint_manager = WaypointManager(self)
 
-        # Timer per controlli periodici e gestione delle task in attesa
+        # Timer per controlli periodici
         self.timer = self.create_timer(self.check_interval, self.timer_callback)
 
         # Tracciamento dello stato
-        self.slaves = {}
+        self.slaves = {}            # { namespace_slave: SlaveState(...) }
         self.partitioning_done = False
         self.occupied_edges = set()
+        self.edge_last_visit_time = {}
 
-        self.get_logger().info("Master node initialized with edge-based occupation control.")
+        self.get_logger().info("Master node initialized with undirected CPP approach.")
 
     def check_slaves_timeout(self):
         """
@@ -81,22 +85,29 @@ class MasterNavigationNode(Node, MasterCallbacks):
             if slave_ns in self.slaves:
                 s = self.slaves[slave_ns]
 
-                if s.current_waypoint_index < len(s.assigned_waypoints):
-                    waypoint = s.assigned_waypoints[s.current_waypoint_index % len(s.assigned_waypoints)]
-                    from_node = s.current_node
-                    to_node = waypoint['label']
-                    edge = (from_node, to_node)
-
-                    if edge in self.occupied_edges:
-                        self.occupied_edges.remove(edge)
-                        self.get_logger().info(f"Edge {edge} is now free due to slave timeout.")
+                # Libera l'edge occupato, se presente
+                if s.current_edge is not None and s.current_edge in self.occupied_edges:
+                    self.occupied_edges.remove(s.current_edge)
+                    self.get_logger().info(f"Freed edge {s.current_edge} due to slave timeout.")
 
                 del self.slaves[slave_ns]
                 self.get_logger().warn(f"Removed slave {slave_ns} due to timeout.")
 
         if slaves_to_remove:
             self.get_logger().info("Repartitioning and reassigning waypoints after slave removal.")
+            # Se vogliamo ri-partizionare su un minor numero di slave
+            # (dipende dalla logica desiderata)
             self.waypoint_manager.repartition_and_assign_waypoints()
+
+    def timer_callback(self):
+        """
+        Controlli periodici:
+        - Check for timeouts
+        - Attempt to assign waiting edges
+        """
+        self.get_logger().debug("Master timer callback triggered.")
+        self.check_slaves_timeout()
+        self.waypoint_manager.assign_waiting_slaves()
 
 def main(args=None):
     rclpy.init(args=args)

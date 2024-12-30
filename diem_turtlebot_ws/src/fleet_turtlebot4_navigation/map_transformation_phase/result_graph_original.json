@@ -191,6 +191,11 @@
       "source": "node_41",
       "target": "node_27",
       "distance": 5.500
+    },
+    {
+      "source": "node_23",
+      "target": "node_30",
+      "distance": 8.0
     }
   ]
 }

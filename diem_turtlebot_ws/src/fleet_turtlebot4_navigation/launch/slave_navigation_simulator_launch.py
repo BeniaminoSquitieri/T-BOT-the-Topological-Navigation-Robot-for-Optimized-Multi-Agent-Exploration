@@ -16,7 +16,7 @@ def generate_launch_description():
         # Non usiamo più initial_x e initial_y, ma initial_node_label
         DeclareLaunchArgument(
             'initial_node_label',
-            default_value='node_5',
+            default_value='node_14',
             description='Etichetta del nodo iniziale in cui si trova il robot'
         ),
         DeclareLaunchArgument(

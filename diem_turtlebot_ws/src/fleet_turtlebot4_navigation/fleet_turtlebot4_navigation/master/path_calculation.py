@@ -1,162 +1,92 @@
 import networkx as nx
-import math
 
-def calculate_dcpp_route(waypoints, subgraph, logger):
+def calculate_undirected_cpp_route(waypoints, subgraph: nx.MultiGraph, logger):
     """
-    Calculate the DCPP (Directed Chinese Postman Problem) route for a given subgraph using a min cost flow approach.
-    This method balances the imbalances between each node's in-degree and out-degree by introducing additional flows,
-    which correspond to adding paths (edges) to make the graph Eulerian.
-
-    Brief procedure:
-    1. Check if the subgraph is strongly connected.
-       If not, solving the DCPP easily is not possible.
-    2. Compute imbalances for each node: out_degree(node) - in_degree(node).
-       - Nodes with a positive imbalance have more outgoing edges than incoming.
-       - Nodes with a negative imbalance have more incoming edges than outgoing.
-    3. Create an auxiliary graph M for the min cost flow problem:
-       - Add a super_source and a super_sink.
-       - From the super_source, connect to nodes with a positive imbalance (capacity = imbalance, weight = 0).
-       - From nodes with a negative imbalance, connect edges to the super_sink (capacity = -imbalance, weight = 0).
-       - Copy the original edges with infinite capacity and weight equal to their cost (distance) to allow paths.
-    4. Solve the min cost flow on M to find the cheapest way to compensate the imbalances.
-    5. Use the obtained flow to add extra edges in G where needed (in practice, consider them as additional traversals on the same edges).
-    6. Now G should be Eulerian. Check with nx.is_eulerian(G).
-    7. Compute an eulerian_circuit on the resulting graph.
-    8. Map the Eulerian circuit back onto the initial waypoints.
-
-    Args:
-        waypoints (list of dict): A list of waypoints, each with 'label', 'x', 'y', and 'orientation'.
-        subgraph (nx.DiGraph): The subgraph on which to compute the DCPP route.
-        logger (logging.Logger): Logger for debugging and process logging.
-
-    Returns:
-        list of dict: An ordered list of waypoints representing the DCPP route.
+    Calcola un percorso DCPP (Chinese Postman Problem) su un grafo non diretto utilizzando MultiGraph.
+    
+    Parametri:
+        waypoints (list): Lista di dizionari contenenti informazioni sui nodi (label, x, y, ecc.).
+        subgraph (networkx.MultiGraph): Sottografo assegnato allo slave per il calcolo del percorso.
+        logger: Logger del master node per la registrazione di informazioni e messaggi di errore.
+    
+    Ritorna:
+        list: Percorso (lista di etichette di nodi) che copre tutti gli archi del subgrafo almeno una volta.
     """
+    # Verifica se il sottografo è effettivamente un MultiGraph (richiesto per duplicazione di archi).
+    if not isinstance(subgraph, nx.MultiGraph):
+        logger.error(f"Il grafo non è un MultiGraph, bensì {type(subgraph)}. Impossibile calcolare DCPP.")
+        return []
 
-    G = subgraph  # For readability
+    # 1. Troviamo i nodi con grado dispari nel subgrafo.
+    odd_degree_nodes = [node for node, deg in subgraph.degree() if deg % 2 != 0]
+    # logger.info(f"Trovati {len(odd_degree_nodes)} nodi con grado dispari: {odd_degree_nodes}")
 
-    # Check if the subgraph is strongly connected
-    if not nx.is_strongly_connected(G):
-        logger.error("The subgraph is not strongly connected, cannot solve DCPP.")
-        raise ValueError("Subgraph not strongly connected.")
+    # 2. Se il grafo è già euleriano (nessun nodo dispari).
+    if len(odd_degree_nodes) == 0:
+        try:
+            # Calcolo diretto del circuito euleriano utilizzando la funzione di NetworkX.
+            euler_circuit = list(nx.eulerian_circuit(subgraph))
+            # logger.info("Il grafo è già euleriano. Calcolato eulerian_circuit.")
+        except nx.NetworkXError as e:
+            # Gestione dell'errore nel caso in cui non sia possibile calcolare il circuito.
+            logger.error(f"Errore nel calcolo dell'eulerian_circuit: {e}")
+            return []
+    else:
+        # 3. Se il grafo non è euleriano, risolviamo il problema aggiungendo archi per renderlo euleriano.
 
-    # Compute imbalances: out_degree(node) - in_degree(node)
-    imbalances = {v: G.out_degree(v) - G.in_degree(v) for v in G.nodes()}
+        # Creiamo un grafo completo con nodi dispari.
+        odd_complete = nx.Graph()
 
-    # Identify nodes with positive and negative imbalances
-    positive_nodes = [v for v, imbalance in imbalances.items() if imbalance > 0]
-    negative_nodes = [v for v, imbalance in imbalances.items() if imbalance < 0]
+        # Per ogni coppia di nodi dispari, calcoliamo la distanza minima nel subgrafo.
+        for i, u in enumerate(odd_degree_nodes):
+            for v in odd_degree_nodes[i+1:]:
+                try:
+                    # Calcola la lunghezza del cammino più corto tra u e v usando i pesi degli archi.
+                    dist = nx.shortest_path_length(subgraph, source=u, target=v, weight='weight')
+                    # Aggiungi un arco al grafo completo tra i nodi dispari con la distanza calcolata come peso.
+                    odd_complete.add_edge(u, v, weight=dist)
+                except nx.NetworkXNoPath:
+                    # Logga se non esiste un cammino tra due nodi dispari.
+                    logger.error(f"Nessun cammino tra {u} e {v} nel subgrafo.")
+                    continue
 
-    # Create an auxiliary graph M for the min cost flow
-    M = nx.DiGraph()
+        # Se non ci sono archi nel grafo completo dei nodi dispari, non possiamo procedere.
+        if odd_complete.number_of_edges() == 0:
+            logger.error("Impossibile calcolare il matching tra i nodi dispari.")
+            return []
 
-    # Copy the original nodes into M
-    M.add_nodes_from(G.nodes(data=True))
+        # Calcolo del matching di peso minimo utilizzando la funzione min_weight_matching.
+        matching = nx.min_weight_matching(odd_complete,  weight='weight')
+        # logger.info(f"Matching minimo trovato tra i nodi dispari: {matching}")
 
-    # Copy the original edges into M with capacity = inf and weight = original distance
-    for (u, v, data) in G.edges(data=True):
-        M.add_edge(u, v, capacity=float('inf'), weight=data.get('weight', 1.0))
+        # Aggiungiamo gli archi del matching al subgrafo.
+        for (u, v) in matching:
+            if subgraph.has_edge(u, v):
+                # Se l'arco esiste già, utilizziamo il peso originale del subgrafo.
+                original_weight = list(subgraph.get_edge_data(u, v).values())[0]['weight']
+            else:
+                # Se l'arco non esiste, calcoliamo il peso come la distanza più corta.
+                original_weight = nx.shortest_path_length(subgraph, source=u, target=v, weight='weight')
+            # Aggiungiamo l'arco con il peso originale al subgrafo.
+            subgraph.add_edge(u, v, weight=original_weight)
 
-    # Add super_source and super_sink
-    M.add_node('super_source')
-    M.add_node('super_sink')
+        # Ora il subgrafo è euleriano, quindi possiamo calcolare il circuito euleriano.
+        try:
+            euler_circuit = list(nx.eulerian_circuit(subgraph))
+            # logger.info("Percorso Euleriano calcolato dopo aver aggiunto gli archi di matching.")
+        except nx.NetworkXError as e:
+            # Logga l'errore se non è possibile calcolare il circuito.
+            logger.error(f"Errore nel calcolo dell'eulerian_circuit: {e}")
+            return []
 
-    # Add edges from super_source to positive imbalance nodes
-    for v in positive_nodes:
-        M.add_edge('super_source', v, capacity=imbalances[v], weight=0)
-
-    # Add edges from negative imbalance nodes to super_sink
-    for v in negative_nodes:
-        M.add_edge(v, 'super_sink', capacity=(-imbalances[v]), weight=0)
-
-    # Solve the min cost flow on M
-    try:
-        flowDict = nx.min_cost_flow(M)
-    except nx.NetworkXUnfeasible:
-        logger.error("Min cost flow problem is infeasible, cannot make the subgraph Eulerian.")
-        raise ValueError("Could not find a feasible min cost flow solution.")
-
-    # Use the computed flow to add extra edges in G
-    # Practically, if there's flow from u to v in flowDict, we need to "duplicate" that path
-    # as many times as the units of flow.
-    for u in G.nodes():
-        for v, flow in flowDict.get(u, {}).items():
-            if v not in G.nodes() or flow <= 0:
-                continue
-            # Add edges corresponding to the flow
-            for _ in range(flow):
-                if not G.has_edge(u, v):
-                    # If the edge does not exist in G (a rare case), we create it
-                    # with the estimated weight as the Euclidean distance
-                    dist = math.hypot(G.nodes[v]['x'] - G.nodes[u]['x'],
-                                      G.nodes[v]['y'] - G.nodes[u]['y'])
-                    G.add_edge(u, v, weight=dist)
-                else:
-                    # The edge already exists; adding flow means considering multiple traversals.
-                    # The Eulerian circuit will handle multiplicities implicitly.
-                    pass
-
-    # Now G should be Eulerian
-    if not nx.is_eulerian(G):
-        logger.error("Failed to make the subgraph Eulerian after min cost flow balancing.")
-        raise ValueError("Subgraph not Eulerian after min cost flow balancing.")
-
-    # Compute the eulerian_circuit on the balanced graph
-    euler_circuit = list(nx.eulerian_circuit(G))
-
-    # Map the eulerian_circuit onto the waypoints
-    # The first waypoint in the route is the first of the provided waypoints.
-    route_labels = [waypoints[0]['label']]
+    # 4. Costruiamo la lista ordinata di nodi dal circuito euleriano.
+    ordered_route = []
     for u, v in euler_circuit:
-        route_labels.append(v)
+        if not ordered_route:
+            # Aggiungiamo il primo nodo al percorso.
+            ordered_route.append(u)
+        # Aggiungiamo il nodo finale dell'arco.
+        ordered_route.append(v)
 
-    # Associate labels with actual waypoints
-    label_to_wp = {wp['label']: wp for wp in waypoints}
-    ordered_route = [label_to_wp[label] for label in route_labels if label in label_to_wp]
-
+    # Ritorniamo il percorso ordinato che copre tutti gli archi del grafo.
     return ordered_route
-
-
-def orientation_str_to_rad(orientation_str):
-    """
-    Convert a cardinal direction string to radians.
-
-    Args:
-        orientation_str (str): Direction as a string ('NORTH', 'EAST', 'SOUTH', 'WEST').
-
-    Returns:
-        float: Corresponding angle in radians.
-    """
-    orientations = {
-        'NORTH': 0.0,
-        'EAST': math.pi / 2,
-        'SOUTH': math.pi,
-        'WEST': 3 * math.pi / 2
-    }
-    return orientations.get(orientation_str.upper(), 0.0)
-
-def orientation_rad_to_str(orientation_radians):
-    """
-    Convert an angle in radians to a cardinal direction string.
-
-    Args:
-        orientation_radians (float): Angle in radians.
-
-    Returns:
-        str: Corresponding direction ('NORTH', 'EAST', 'SOUTH', 'WEST').
-    """
-    orientation_map = {
-        0.0: 'NORTH',
-        math.pi / 2: 'EAST',
-        math.pi: 'SOUTH',
-        3 * math.pi / 2: 'WEST'
-    }
-    tolerance = 0.1  # Tolerance for floating-point approximations
-
-    for angle, direction in orientation_map.items():
-        if abs(orientation_radians - angle) < tolerance:
-            return direction
-
-    # If no exact match, return the closest direction
-    closest_angle = min(orientation_map.keys(), key=lambda k: abs(k - orientation_radians))
-    return orientation_map[closest_angle]
