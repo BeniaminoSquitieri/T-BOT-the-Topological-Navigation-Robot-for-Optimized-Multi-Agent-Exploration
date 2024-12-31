@@ -21,6 +21,10 @@ class SlaveNavigationSimulator(Node):
         self.robot_namespace = robot_namespace
         self.initial_node_label = initial_node_label
 
+        # Coordini iniziali (potranno essere determinati dopo aver ricevuto il grafo)
+        self.initial_x = None
+        self.initial_y = None
+
         # Nodo corrente
         self.current_node = initial_node_label
 
@@ -107,13 +111,28 @@ class SlaveNavigationSimulator(Node):
                     self.navigation_graph = new_graph
                     self.graph_received = True
 
-            # Pubblica lo stato "ready" senza includere la posizione iniziale
+                    # Se il nodo iniziale esiste nel grafo, inizializziamo x,y
+                    if self.initial_node_label in self.navigation_graph.nodes:
+                        node_data = self.navigation_graph.nodes[self.initial_node_label]
+                        self.initial_x = node_data['x']
+                        self.initial_y = node_data['y']
+                        self.current_node = self.initial_node_label
+                        # self.get_logger().info(
+                        #     f"[{self.robot_namespace}] Nodo iniziale '{self.initial_node_label}' con pos=({self.initial_x}, {self.initial_y})."
+                        # )
+                    else:
+                        self.get_logger().error(
+                            f"[{self.robot_namespace}] Nodo iniziale '{self.initial_node_label}' non trovato nel grafo di navigazione."
+                        )
+                        return  # Non procedere ulteriormente se il nodo iniziale non è valido
+
+            # Pubblica lo stato "ready"
             ready_status = {
                 'robot_namespace': self.robot_namespace,
                 'status': 'ready',
                 'error_message': '',
                 'time_taken': 0.0,
-                'current_waypoint': self.current_node,  # Può essere 'None' se desiderato
+                'current_waypoint': self.current_node,
                 'traversed_edge': []
             }
             ready_msg = String()
@@ -170,7 +189,7 @@ class SlaveNavigationSimulator(Node):
                 return
 
             current_pos = (self.navigation_graph.nodes[current_node]['x'],
-                           self.navigation_graph.nodes[current_node]['y'])
+                        self.navigation_graph.nodes[current_node]['y'])
             target_pos = (x, y)
 
             # Calcola la distanza Euclidea
@@ -203,6 +222,7 @@ class SlaveNavigationSimulator(Node):
             error_msg = f"Simulazione di navigazione verso '{label}' fallita."
             self.get_logger().error(f"[{self.robot_namespace}] {error_msg}")
             self.publish_status("error", error_msg, travel_time, label, traversed_edge)
+
 
     def publish_status(self, status, error_message, time_taken, current_waypoint, traversed_edge):
         """
@@ -248,6 +268,7 @@ class SlaveNavigationSimulator(Node):
 
         return G
 
+
     def run(self):
         rclpy.spin(self)
 
@@ -259,7 +280,7 @@ def main(args=None):
     rclpy.init(args=args)
     parser = argparse.ArgumentParser(description='Slave Navigation Simulator')
     parser.add_argument('--robot_namespace', type=str, default='robot1', help='Namespace of the robot')
-    parser.add_argument('--initial_node_label', type=str, default='node_14', help='Initial node label where the robot starts')
+    parser.add_argument('--initial_node_label', type=str, default='node_4', help='Initial node label where the robot starts')
     parsed_args, unknown = parser.parse_known_args()
 
     node = SlaveNavigationSimulator(

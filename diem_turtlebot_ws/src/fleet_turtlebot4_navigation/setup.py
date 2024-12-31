@@ -28,7 +28,7 @@ setup(
         'console_scripts': [
             'master_navigation_node = fleet_turtlebot4_navigation.master.master_navigation_node:main',
             'simulated_slave_navigation_node = fleet_turtlebot4_navigation.slave.simulated_slave_navigation_node:main',
-            'slave_navigation_node = fleet_turtlebot4_navigation.slave_navigation_node:main',
+            'slave_navigation_node = fleet_turtlebot4_navigation.slave.slave_navigation_node:main',
             'publish_waypoints = fleet_turtlebot4_navigation.publish_waypoints:main'
         ],
     },
