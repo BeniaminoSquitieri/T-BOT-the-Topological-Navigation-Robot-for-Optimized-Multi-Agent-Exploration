@@ -19,11 +19,6 @@ def generate_launch_description():
             default_value='node_14',
             description='Etichetta del nodo iniziale in cui si trova il robot'
         ),
-        DeclareLaunchArgument(
-            'initial_orientation',
-            default_value='NORTH',
-            description='Orientamento iniziale (NORTH, EAST, SOUTH, WEST)'
-        ),
 
         Node(
             package='fleet_turtlebot4_navigation',
@@ -34,7 +29,7 @@ def generate_launch_description():
             arguments=[
                 '--robot_namespace', LaunchConfiguration('robot_namespace'),
                 '--initial_node_label', LaunchConfiguration('initial_node_label'),
-                '--initial_orientation', LaunchConfiguration('initial_orientation'),
+                # Rimosso l'argomento 'initial_orientation' poiché non è più necessario
             ]
         )
     ])

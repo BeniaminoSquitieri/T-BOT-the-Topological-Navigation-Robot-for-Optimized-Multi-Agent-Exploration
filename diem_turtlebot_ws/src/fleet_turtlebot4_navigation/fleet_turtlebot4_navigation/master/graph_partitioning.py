@@ -5,6 +5,8 @@ import networkx as nx
 import numpy as np
 from sklearn.cluster import KMeans
 
+
+#MODULO VECCHIO NON PIU USATO
 def load_full_graph(graph_path):
     """
     Loads the full graph from a JSON file and returns a NetworkX DiGraph (directed graph).
@@ -247,8 +249,7 @@ def load_full_graph_from_data(graph_data):
         label = node['label']
         x = node['x']
         y = node['y']
-        orientation = node.get('orientation', 0.0)
-        G.add_node(label, x=x, y=y, orientation=orientation)
+        G.add_node(label, x=x, y=y)
 
     for edge in graph_data['edges']:
         u = edge['from']
