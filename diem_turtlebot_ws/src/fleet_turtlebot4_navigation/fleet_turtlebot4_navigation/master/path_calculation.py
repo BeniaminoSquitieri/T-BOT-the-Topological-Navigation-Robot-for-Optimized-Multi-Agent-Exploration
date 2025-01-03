@@ -1,92 +1,150 @@
 import networkx as nx
 
+
 def calculate_undirected_cpp_route(waypoints, subgraph: nx.MultiGraph, logger):
     """
-    Calcola un percorso DCPP (Chinese Postman Problem) su un grafo non diretto utilizzando MultiGraph.
-    
-    Parametri:
-        waypoints (list): Lista di dizionari contenenti informazioni sui nodi (label, x, y, ecc.).
-        subgraph (networkx.MultiGraph): Sottografo assegnato allo slave per il calcolo del percorso.
-        logger: Logger del master node per la registrazione di informazioni e messaggi di errore.
-    
-    Ritorna:
-        list: Percorso (lista di etichette di nodi) che copre tutti gli archi del subgrafo almeno una volta.
+    Calculates a Closed Postman Problem (CPP) route on an undirected MultiGraph.
+
+    The Chinese Postman Problem seeks the shortest possible route that traverses every edge of a graph
+    at least once. For an undirected graph, if it is already Eulerian (all nodes have even degrees), 
+    the Eulerian circuit is the optimal CPP route. If not, additional edges (duplicated paths) are 
+    added to make all node degrees even, thereby enabling an Eulerian circuit.
+
+    This function performs the following steps:
+      1. Checks if the subgraph is a MultiGraph (required for handling multiple edges).
+      2. Identifies nodes with odd degrees.
+      3. If the graph is Eulerian, directly computes the Eulerian circuit.
+      4. If not, computes a minimum-weight matching between odd-degree nodes to duplicate edges.
+      5. Adds the matched edges to the subgraph, making it Eulerian.
+      6. Computes the Eulerian circuit on the modified subgraph.
+      7. Constructs an ordered list of node labels representing the CPP route.
+
+    Parameters:
+        waypoints (list of dict): 
+            A list containing waypoint information, where each waypoint is a dictionary with keys 
+            like 'label', 'x', 'y', etc. Example:
+                [
+                    {'label': 'node_1', 'x': 1.0, 'y': 2.0},
+                    {'label': 'node_2', 'x': 3.0, 'y': 4.0},
+                    ...
+                ]
+        subgraph (networkx.MultiGraph): 
+            The subgraph assigned to the slave robot for route calculation. It represents the portion
+            of the navigation graph the slave is responsible for.
+        logger (rclpy.logging): 
+            The logger instance from the master node used for logging informational and error messages.
+
+    Returns:
+        list: 
+            An ordered list of node labels representing the route that covers all edges of the subgraph 
+            at least once. Example:
+                ['node_1', 'node_2', 'node_3', 'node_1']
     """
-    # Verifica se il sottografo è effettivamente un MultiGraph (richiesto per duplicazione di archi).
+    # ---------------------------
+    # Step 1: Validate Subgraph Type
+    # ---------------------------
+    # Ensure that the provided subgraph is indeed a MultiGraph, which allows multiple edges between nodes.
+    # This is crucial for correctly handling scenarios where multiple paths exist between two nodes.
     if not isinstance(subgraph, nx.MultiGraph):
-        logger.error(f"Il grafo non è un MultiGraph, bensì {type(subgraph)}. Impossibile calcolare DCPP.")
+        logger.error(f"The graph is not a MultiGraph, but a {type(subgraph)}. Cannot compute DCPP.")
         return []
 
-    # 1. Troviamo i nodi con grado dispari nel subgrafo.
+    # ---------------------------
+    # Step 2: Identify Odd-Degree Nodes
+    # ---------------------------
+    # In graph theory, a graph has an Eulerian circuit if and only if it is connected and every vertex has an even degree.
+    # Nodes with odd degrees disrupt this property, so we need to pair them up to make their degrees even.
     odd_degree_nodes = [node for node, deg in subgraph.degree() if deg % 2 != 0]
-    # logger.info(f"Trovati {len(odd_degree_nodes)} nodi con grado dispari: {odd_degree_nodes}")
+    # logger.info(f"Found {len(odd_degree_nodes)} odd-degree nodes: {odd_degree_nodes}")
 
-    # 2. Se il grafo è già euleriano (nessun nodo dispari).
+    # ---------------------------
+    # Step 3: Check if Graph is Already Eulerian
+    # ---------------------------
+    # If there are no odd-degree nodes, the graph is already Eulerian, and we can directly compute the Eulerian circuit.
     if len(odd_degree_nodes) == 0:
         try:
-            # Calcolo diretto del circuito euleriano utilizzando la funzione di NetworkX.
+            # Compute the Eulerian circuit using NetworkX's built-in function.
+            # This function returns an iterator of edge tuples (u, v).
             euler_circuit = list(nx.eulerian_circuit(subgraph))
-            # logger.info("Il grafo è già euleriano. Calcolato eulerian_circuit.")
+            # logger.info("The graph is already Eulerian. Computed Eulerian circuit.")
         except nx.NetworkXError as e:
-            # Gestione dell'errore nel caso in cui non sia possibile calcolare il circuito.
-            logger.error(f"Errore nel calcolo dell'eulerian_circuit: {e}")
+            # Handle the error if the Eulerian circuit cannot be computed for some reason.
+            logger.error(f"Error computing Eulerian circuit: {e}")
             return []
     else:
-        # 3. Se il grafo non è euleriano, risolviamo il problema aggiungendo archi per renderlo euleriano.
+        # ---------------------------
+        # Step 4: Make Graph Eulerian by Adding Matching Edges
+        # ---------------------------
+        # Since the graph is not Eulerian, we need to make it Eulerian by pairing up the odd-degree nodes
+        # and adding the shortest possible paths between them. This ensures that all nodes have even degrees.
 
-        # Creiamo un grafo completo con nodi dispari.
+        # Create a complete graph of the odd-degree nodes where the edge weights represent the shortest path distances.
         odd_complete = nx.Graph()
 
-        # Per ogni coppia di nodi dispari, calcoliamo la distanza minima nel subgrafo.
+        # Iterate over all unique pairs of odd-degree nodes to calculate the shortest path distances between them.
         for i, u in enumerate(odd_degree_nodes):
-            for v in odd_degree_nodes[i+1:]:
+            for v in odd_degree_nodes[i + 1:]:
                 try:
-                    # Calcola la lunghezza del cammino più corto tra u e v usando i pesi degli archi.
+                    # Calculate the length of the shortest path between nodes u and v, using edge weights.
                     dist = nx.shortest_path_length(subgraph, source=u, target=v, weight='weight')
-                    # Aggiungi un arco al grafo completo tra i nodi dispari con la distanza calcolata come peso.
+                    # Add an edge between u and v in the complete graph with the distance as the weight.
                     odd_complete.add_edge(u, v, weight=dist)
                 except nx.NetworkXNoPath:
-                    # Logga se non esiste un cammino tra due nodi dispari.
-                    logger.error(f"Nessun cammino tra {u} e {v} nel subgrafo.")
+                    # If there is no path between u and v, log an error and skip this pair.
+                    logger.error(f"No path between {u} and {v} in the subgraph.")
                     continue
 
-        # Se non ci sono archi nel grafo completo dei nodi dispari, non possiamo procedere.
+        # Check if the complete graph has any edges; if not, it's impossible to perform matching.
         if odd_complete.number_of_edges() == 0:
-            logger.error("Impossibile calcolare il matching tra i nodi dispari.")
+            logger.error("Cannot compute matching between odd-degree nodes; no edges available.")
             return []
 
-        # Calcolo del matching di peso minimo utilizzando la funzione min_weight_matching.
-        matching = nx.min_weight_matching(odd_complete,  weight='weight')
-        # logger.info(f"Matching minimo trovato tra i nodi dispari: {matching}")
+        # Compute the minimum-weight matching on the complete graph of odd-degree nodes.
+        # This finds the pairing of nodes that minimizes the total added distance.
+        matching = nx.min_weight_matching(odd_complete, weight='weight')
+        # logger.info(f"Found minimum weight matching between odd-degree nodes: {matching}")
 
-        # Aggiungiamo gli archi del matching al subgrafo.
+        # ---------------------------
+        # Step 5: Duplicate Edges in Subgraph Based on Matching
+        # ---------------------------
+        # For each pair in the matching, add the corresponding edges to the subgraph to make all node degrees even.
         for (u, v) in matching:
             if subgraph.has_edge(u, v):
-                # Se l'arco esiste già, utilizziamo il peso originale del subgrafo.
+                # If an edge already exists between u and v, retrieve its original weight.
+                # Since it's a MultiGraph, there might be multiple edges; take the first one.
                 original_weight = list(subgraph.get_edge_data(u, v).values())[0]['weight']
             else:
-                # Se l'arco non esiste, calcoliamo il peso come la distanza più corta.
+                # If no direct edge exists, calculate the shortest path distance between u and v.
                 original_weight = nx.shortest_path_length(subgraph, source=u, target=v, weight='weight')
-            # Aggiungiamo l'arco con il peso originale al subgrafo.
+            # Add an edge between u and v with the original weight.
+            # In a MultiGraph, this allows multiple edges between the same pair of nodes.
             subgraph.add_edge(u, v, weight=original_weight)
 
-        # Ora il subgrafo è euleriano, quindi possiamo calcolare il circuito euleriano.
+        # After adding the necessary edges, the graph should now be Eulerian.
         try:
+            # Compute the Eulerian circuit on the modified subgraph.
             euler_circuit = list(nx.eulerian_circuit(subgraph))
-            # logger.info("Percorso Euleriano calcolato dopo aver aggiunto gli archi di matching.")
+            # logger.info("Eulerian path computed after adding matching edges.")
         except nx.NetworkXError as e:
-            # Logga l'errore se non è possibile calcolare il circuito.
-            logger.error(f"Errore nel calcolo dell'eulerian_circuit: {e}")
+            # Handle any errors that occur during the computation of the Eulerian circuit.
+            logger.error(f"Error computing Eulerian circuit after adding edges: {e}")
             return []
 
-    # 4. Costruiamo la lista ordinata di nodi dal circuito euleriano.
+    # ---------------------------
+    # Step 6: Construct the Ordered Route from the Eulerian Circuit
+    # ---------------------------
+    # Convert the sequence of edges in the Eulerian circuit into an ordered list of node labels.
     ordered_route = []
     for u, v in euler_circuit:
         if not ordered_route:
-            # Aggiungiamo il primo nodo al percorso.
+            # If the ordered_route list is empty, append the first node of the circuit.
             ordered_route.append(u)
-        # Aggiungiamo il nodo finale dell'arco.
+        # Append the target node of the current edge to the route.
         ordered_route.append(v)
 
-    # Ritorniamo il percorso ordinato che copre tutti gli archi del grafo.
+    # ---------------------------
+    # Step 7: Return the Final CPP Route
+    # ---------------------------
+    # The ordered_route now represents a path that traverses every edge at least once.
+    # This is the solution to the Chinese Postman Problem for the given subgraph.
     return ordered_route
