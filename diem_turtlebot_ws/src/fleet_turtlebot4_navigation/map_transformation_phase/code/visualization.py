@@ -8,8 +8,6 @@ from PIL import Image
 import networkx as nx
 import logging
 import numpy as np
-from skimage.draw import line as draw_line
-import matplotlib.pyplot as plt
 import json 
 def numpy_to_python(obj):
     """

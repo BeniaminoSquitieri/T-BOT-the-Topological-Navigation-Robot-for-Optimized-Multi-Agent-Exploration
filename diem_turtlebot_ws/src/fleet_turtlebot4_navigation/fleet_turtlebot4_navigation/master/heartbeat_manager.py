@@ -15,7 +15,7 @@ class HeartbeatManager:
     periodic heartbeat messages to inform other nodes (slaves) of its active status.
     """
     
-    def __init__(self, node, heartbeat_topic: str = '/master_heartbeat', rate: float = 0.01):
+    def __init__(self, node, heartbeat_topic: str = '/master_heartbeat', rate: float = 10):
         """
         Initializes the HeartbeatManager.
         

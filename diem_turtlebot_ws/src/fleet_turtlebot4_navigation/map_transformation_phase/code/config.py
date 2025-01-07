@@ -2,7 +2,6 @@
 
 import yaml
 import cv2
-import logging
 
 class Config:
     """
