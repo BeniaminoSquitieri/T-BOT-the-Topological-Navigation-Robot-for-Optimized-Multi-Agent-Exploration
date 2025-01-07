@@ -7,9 +7,12 @@ import json
 import time
 import argparse
 import math
+from threading import Lock, Event
 
 # Navigazione TurtleBot4
 from turtlebot4_navigation.turtlebot4_navigator import TurtleBot4Navigator, TaskResult
+
+import networkx as nx  # Importato per la gestione dei grafi
 
 
 class SlaveState:
@@ -40,6 +43,8 @@ class SlaveNavigationNode(Node):
     - Riceve e esegue waypoints dal master (x, y, label).
     - Monitora i heartbeat del master.
     - Pubblica lo status della navigazione.
+    - Gestisce il grafo di navigazione ricevuto dal master.
+    - Gestisce la notifica del primo waypoint raggiunto.
     """
 
     def __init__(self, robot_namespace):
@@ -49,7 +54,7 @@ class SlaveNavigationNode(Node):
         Args:
             robot_namespace (str): Namespace unico dello slave (es. "robot1").
         """
-        super().__init__('slave_navigation_node')
+        super().__init__('slave_navigation_node', namespace=robot_namespace)
 
         # Parametri dello slave
         self.robot_namespace = robot_namespace
@@ -63,12 +68,15 @@ class SlaveNavigationNode(Node):
         # Publisher per inviare heartbeat al master
         self.heartbeat_publisher = self.create_publisher(String, '/slave_heartbeat', 10)
 
+        # Publisher per notificare il primo waypoint raggiunto
+        self.first_wp_reached_pub = self.create_publisher(String, '/first_waypoint_reached', 10)
+
         # Sottoscrizione ai heartbeat del master
         self.master_heartbeat_subscriber = self.create_subscription(
             String, '/master_heartbeat', self.master_heartbeat_callback, 10
         )
 
-        # Sottoscrizione ai heartbeat di altri slave (se necessario)
+        # Sottoscrizione ai heartbeat di altri slave (opzionale)
         self.slave_heartbeat_subscriber = self.create_subscription(
             String, '/slave_heartbeat', self.slave_heartbeat_callback, 10
         )
@@ -80,6 +88,11 @@ class SlaveNavigationNode(Node):
         )
         self.get_logger().info(
             f"[{self.robot_namespace}] Subscribed to navigation commands on topic '{navigation_commands_topic}'."
+        )
+
+        # Sottoscrizione al grafo di navigazione
+        self.graph_subscriber = self.create_subscription(
+            String, '/navigation_graph', self.navigation_graph_callback, 10
         )
 
         # Timer per pubblicare regolarmente la registrazione dello slave
@@ -105,7 +118,16 @@ class SlaveNavigationNode(Node):
             publisher=self.status_publisher
         )
 
-        self.get_logger().info(f"[{self.robot_namespace}] Slave node initialized.")
+        # Inizializzazione del nodo corrente senza posizione iniziale
+        self.current_node = None
+
+        # Flag per la notifica del primo waypoint
+        self.first_wp_notification_sent = False
+
+        # Lock per la navigazione
+        self.navigation_lock = Lock()
+
+        self.get_logger().info(f"[{self.robot_namespace}] Slave node initialized without an initial node.")
 
     def publish_registration(self):
         """
@@ -164,115 +186,159 @@ class SlaveNavigationNode(Node):
         self.get_logger().info(f"[{self.robot_namespace}] Received waypoint: {waypoint_data}")
 
         # Stampa dettagliata dei waypoint per debugging
-        self.get_logger().info(f"[{self.robot_namespace}] Waypoint Details - Label: {waypoint_data['label']}, X: {waypoint_data['x']}, Y: {waypoint_data['y']}")
+        self.get_logger().info(
+            f"[{self.robot_namespace}] Waypoint Details - Label: {waypoint_data['label']}, X: {waypoint_data['x']}, Y: {waypoint_data['y']}"
+        )
 
         # Aggiungi il waypoint alla lista
         self.slave_state.assigned_waypoints.append(waypoint_data)
+
+        # Log dell'assegnazione del waypoint
+        self.get_logger().info(
+            f"[{self.robot_namespace}] Assigned waypoint '{waypoint_data['label']}' to navigation queue."
+        )
 
         # Se non è già in navigazione, avvia la navigazione verso il waypoint
         if not self.is_navigating:
             self.is_navigating = True
             self.execute_navigation(waypoint_data)
 
-    def execute_navigation(self, waypoint):
+    def navigation_graph_callback(self, msg):
         """
-        Naviga verso il waypoint specificato (x, y) con TurtleBot4Navigator.
+        Callback per gestire il grafo di navigazione ricevuto dal master.
+        Carica il grafo e imposta il flag di ricezione.
+        """
+        try:
+            graph_data = json.loads(msg.data)
+            self.navigation_graph = self.load_full_graph_from_data(graph_data)
+            self.graph_received = True
+            self.get_logger().info(f"[{self.robot_namespace}] Navigation graph received and loaded.")
+        except json.JSONDecodeError as e:
+            self.get_logger().error(f"[{self.robot_namespace}] Error decoding navigation graph: {e}")
+        except Exception as e:
+            self.get_logger().error(f"[{self.robot_namespace}] Error loading navigation graph: {e}")
+
+    def load_full_graph_from_data(self, data):
+        """
+        Funzione di utilità per caricare un grafo completo da dati JSON.
 
         Args:
-            waypoint (dict): Dizionario contenente 'label', 'x', 'y'.
+            data (dict): Dati del grafo in formato node-link.
+
+        Returns:
+            networkx.Graph: Grafo di navigazione caricato.
         """
-        label = waypoint.get('label', '???')
-        x = waypoint.get('x')
-        y = waypoint.get('y')
-
-        # Log della navigazione
-        self.get_logger().info(
-            f"[{self.robot_namespace}] Navigating to '{label}' => (x={x}, y={y})."
-        )
-
-        # Crea il goal pose con orientamento di default (0.0)
         try:
-            goal_pose = self.navigator.getPoseStamped([x, y], 0.0)
-            self.get_logger().debug(f"[{self.robot_namespace}] Created goal_pose: {goal_pose}")
+            # Specifica esplicitamente il parametro edges per evitare avvisi e errori
+            return nx.node_link_graph(data, edges="links")
         except Exception as e:
-            self.get_logger().error(f"[{self.robot_namespace}] Error creating goal_pose: {e}")
-            self.publish_status("error", f"Error creating goal_pose: {e}", 0.0, label)
+            self.get_logger().error(f"[{self.robot_namespace}] Failed to load graph: {e}")
+            return None
+
+    def execute_navigation(self, waypoint):
+        """
+        Naviga verso un waypoint specificato usando il TurtleBot4Navigator.
+
+        La funzione:
+        - Inizia la navigazione verso le coordinate (x, y) specificate.
+        - Monitora il processo di navigazione e attende il completamento.
+        - Pubblica un messaggio di stato (successo o fallimento) al master dopo la navigazione.
+
+        Args:
+            waypoint (dict): Un dizionario contenente i dati del waypoint:
+                - 'label': Label del waypoint.
+                - 'x': Coordinata X del waypoint.
+                - 'y': Coordinata Y del waypoint.
+        """
+        label = waypoint['label']
+        x = waypoint['x']
+        y = waypoint['y']
+
+        # Se non ho current_node, imposta il nodo corrente al primo waypoint senza navigare
+        if self.current_node is None:
+            self.current_node = label
+            self.get_logger().info(f"[{self.robot_namespace}] Set current_node to '{label}' without navigation.")
+            self.publish_status("reached", "", 0.0, label)
+            self.publish_first_waypoint_notification()
             self.is_navigating = False
             return
+
+        # Log la navigazione
+        self.get_logger().info(f"[{self.robot_namespace}] Navigating to {label} at ({x}, {y})")
+
+        # Crea il goal pose per la navigazione
+        # Correggi qui la chiamata a getPoseStamped
+        # **Modifica**: Usa il parametro corretto, presumibilmente una lista completa [x, y, theta]
+        goal_pose = self.navigator.getPoseStamped([x, y], 0.0)  # Passa 'rotation' come secondo argomento
+
 
         start_time = time.time()
 
         try:
-            # Verifica se l'action server è disponibile
+            # Controlla se l'action server di navigazione è disponibile
             if not self.navigator.nav_to_pose_client.wait_for_server(timeout_sec=5.0):
-                error_message = f"Action server not available for '{label}'."
+                error_message = f"Action server not available for {label}. Skipping this waypoint."
                 self.get_logger().error(f"[{self.robot_namespace}] {error_message}")
 
-                # Pubblica uno status di errore
+                # Pubblica uno stato di errore
                 self.publish_status("error", error_message, 0.0, label)
 
-                # Reset dello stato di navigazione
-                self.is_navigating = False
                 return
 
-            # Avvia il task di navigazione
+            # Invia il goal di navigazione all'action server
             nav_future = self.navigator.startToPose(goal_pose)
-            self.get_logger().debug(f"[{self.robot_namespace}] Navigation started => {label}.")
+            self.get_logger().debug(f"[{self.robot_namespace}] Navigation started towards '{label}'...")
+
+            # Attende il completamento della navigazione
+            rclpy.spin_until_future_complete(self, nav_future)
+            nav_result = nav_future.result()  # Ottiene il risultato della navigazione
+
+            # Calcola il tempo impiegato per la navigazione
+            time_taken = time.time() - start_time
+
+            if nav_result is None:
+                # Se nessun risultato è restituito, logga un errore e pubblica uno stato di errore
+                error_message = f"No result received for navigation to '{label}'."
+                self.get_logger().error(f"[{self.robot_namespace}] {error_message}")
+                self.publish_status("error", error_message, 0.0, label)
+                return
+
+            if nav_result == TaskResult.SUCCEEDED:
+                # Se la navigazione ha avuto successo, aggiorna il nodo corrente e pubblica uno stato di successo
+                self.get_logger().info(f"[{self.robot_namespace}] Successfully reached '{label}' in {time_taken:.2f} seconds.")
+                self.current_node = label
+                self.publish_status("reached", "", time_taken, label)
+
+                # Pubblica la notifica del primo waypoint raggiunto (solo una volta)
+                self.publish_first_waypoint_notification()
+            else:
+                # Se la navigazione ha fallito, logga un errore e pubblica uno stato di errore
+                error_message = f"Navigation to '{label}' failed with result code {nav_result}."
+                self.get_logger().error(f"[{self.robot_namespace}] {error_message}")
+                self.publish_status("error", error_message, time_taken, label)
 
         except Exception as e:
-            # Gestisci eventuali eccezioni durante l'avvio della navigazione
-            error_message = f"Exception while sending goal to '{label}': {e}"
+            # Gestisce eventuali eccezioni durante la navigazione
+            error_message = f"Exception during navigation to '{label}': {e}"
             self.get_logger().error(f"[{self.robot_namespace}] {error_message}")
-
-            # Pubblica uno status di errore
             self.publish_status("error", error_message, 0.0, label)
 
-            # Reset dello stato di navigazione
+        finally:
+            # Reset del flag di navigazione
             self.is_navigating = False
-            return
 
-        # Attendi che il task di navigazione sia completato
-        rclpy.spin_until_future_complete(self, nav_future)
-        nav_result = nav_future.result()
-
-        # Calcola il tempo impiegato per la navigazione
-        time_taken = time.time() - start_time
-
-        # Gestisci il risultato del task di navigazione
-        if nav_result is None:
-            # Nessun risultato dall'action server
-            error_message = f"No result => '{label}'."
-            self.get_logger().error(f"[{self.robot_namespace}] {error_message}")
-            self.publish_status("error", error_message, time_taken, label)
-            self.is_navigating = False
-            return
-
-        if nav_result == TaskResult.SUCCEEDED:
-            # Log del successo e pubblica uno status di successo
-            self.get_logger().info(
-                f"[{self.robot_namespace}] Reached '{label}' successfully in {time_taken:.2f}s."
-            )
-            self.publish_status("reached", "", time_taken, label)
-
-            # Passa al prossimo waypoint se presente
-            self.slave_state.current_waypoint_index += 1
-            if self.slave_state.current_waypoint_index < len(self.slave_state.assigned_waypoints):
-                next_wpt = self.slave_state.assigned_waypoints[self.slave_state.current_waypoint_index]
-                self.get_logger().info(f"[{self.robot_namespace}] Proceeding to next waypoint: {next_wpt}")
-                self.execute_navigation(next_wpt)
-            else:
-                # Se non ci sono altri waypoints, resetta lo stato di navigazione
-                self.is_navigating = False
-                self.get_logger().info(
-                    f"[{self.robot_namespace}] All waypoints have been navigated."
-                )
-
-        else:
-            # Log del fallimento e pubblica uno status di errore
-            error_message = f"Navigation to '{label}' failed. Code={nav_result}"
-            self.get_logger().error(f"[{self.robot_namespace}] {error_message}")
-            self.publish_status("error", error_message, time_taken, label)
-            self.is_navigating = False
+    def publish_first_waypoint_notification(self):
+        """
+        Pubblica una notifica una volta raggiunto il primo waypoint.
+        Assicura che la notifica sia inviata solo una volta.
+        """
+        if not self.first_wp_notification_sent and self.current_node is not None:
+            notif_data = {"robot_namespace": self.robot_namespace}
+            notif_msg = String()
+            notif_msg.data = json.dumps(notif_data)
+            self.first_wp_reached_pub.publish(notif_msg)  # Pubblica la notifica
+            self.first_wp_notification_sent = True  # Assicura che la notifica sia inviata solo una volta
+            self.get_logger().info(f"[{self.robot_namespace}] Published first_waypoint_reached notification.")
 
     def publish_status(self, status, error_message, time_taken, current_waypoint):
         """
@@ -296,12 +362,24 @@ class SlaveNavigationNode(Node):
         self.status_publisher.publish(msg)
         self.get_logger().info(f"[{self.robot_namespace}] Published status: {st_data}")
 
+    def run_navigation_loop(self):
+        """
+        Esegue il loop di navigazione principale.
+        """
+        rclpy.spin(self)
+
+    def destroy_node(self):
+        """
+        Pulisce le risorse prima di spegnere il nodo.
+        """
+        super().destroy_node()
+
 
 def main(args=None):
     """
     Punto di ingresso principale per il nodo SlaveNavigationNode.
     """
-    parser = argparse.ArgumentParser(description='Minimal Slave Navigation Node')
+    parser = argparse.ArgumentParser(description='Real Slave Navigation Node')
     parser.add_argument(
         '--robot_namespace',
         type=str,
@@ -317,7 +395,7 @@ def main(args=None):
     )
 
     try:
-        rclpy.spin(node)
+        node.run_navigation_loop()
     except KeyboardInterrupt:
         pass
     finally:

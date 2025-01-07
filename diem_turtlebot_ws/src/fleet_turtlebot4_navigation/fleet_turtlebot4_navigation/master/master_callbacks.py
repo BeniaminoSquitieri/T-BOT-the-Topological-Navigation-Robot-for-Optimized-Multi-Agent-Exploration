@@ -18,7 +18,7 @@ class MasterCallbacks:
     reusability, allowing different master node implementations to inherit and utilize 
     these core functionalities.
     """
-
+    
     def __init__(self):
         """
         Initializes the MasterCallbacks class.
@@ -27,7 +27,9 @@ class MasterCallbacks:
         route. This route is shared across all slave nodes to coordinate their navigation tasks.
         """
         self.global_cpp_route = []  # Will hold the common Eulerian path for navigation
-
+        self.first_waypoint_phase = True
+        self.slaves_reached_first = set()
+    
     def publish_navigation_graph(self):
         """
         Publishes the navigation graph to a ROS2 topic.
@@ -101,16 +103,16 @@ class MasterCallbacks:
 
         # Calculate the CPP route using the provided path calculation utility
         route_nodes = calculate_undirected_cpp_route(waypoints, self.full_graph, self.get_logger())
-        
+
         # Assign the computed route to the class attribute
         self.global_cpp_route = route_nodes
         
         # Log the outcome of the route computation
-        if route_nodes:
-            self.get_logger().info(f"Global CPP route computed: {route_nodes}")
+        if self.global_cpp_route:
+            self.get_logger().info(f"Global CPP route computed: {self.global_cpp_route}")
         else:
             self.get_logger().error("Global CPP route is empty or Euler circuit not found.")
-
+    
     def slave_registration_callback(self, msg):
         """
         Callback that handles the registration of a new slave robot.
@@ -204,7 +206,7 @@ class MasterCallbacks:
         # Check if the slave is registered; if not, optionally handle or ignore
         if slave_ns not in self.slaves:
             # Optionally, handle unregistered slaves, such as auto-registering them
-            self.get_logger().warn(f"Received status from unknown slave '{slave_ns}'. Registering slave.")
+            self.get_logger().warn(f"Received status from unknown slave '{slave_ns}'. Ignoring message.")
             return
 
         # Retrieve the SlaveState instance for the reporting slave
@@ -281,7 +283,7 @@ class MasterCallbacks:
             self.get_logger().warn(f"Removed slave '{slave_ns}' due to error.")
 
         elif status == "traversing":
-            # Log that the slave is currently traversing towards a waypoint
+            # Log that the slave is currently traversing toward a waypoint
             self.get_logger().debug(
                 f"Slave '{slave_ns}' is traversing toward '{current_wpt}'."
             )
@@ -291,67 +293,49 @@ class MasterCallbacks:
             # Warn if an unhandled status is received
             self.get_logger().warn(f"Unhandled status '{status}' from '{slave_ns}'.")
 
-    def timer_callback(self):
+    def on_first_waypoint_reached(self, msg: String):
         """
-        Periodic callback function triggered by a ROS2 timer.
+        Callback to handle notifications from slaves when they reach their first waypoint.
         
-        This method is responsible for:
-        - Checking for any slaves that have exceeded their heartbeat timeout and removing them.
-        - Assigning waiting slaves to new waypoints as needed.
+        This method tracks which slaves have reported reaching their first waypoint. Once all active
+        slaves have reported, it proceeds with assigning subsequent waypoints and stops listening for
+        further first waypoint notifications.
         
-        It ensures that the master node maintains an up-to-date view of active slaves and 
-        continues to efficiently distribute navigation tasks.
+        Parameters:
+            msg (std_msgs.msg.String): The incoming message containing data in JSON format with the key 'robot_namespace'.
         """
-        # Log that the timer callback has been triggered at the DEBUG level
-        self.get_logger().debug("Master timer callback triggered.")
-        
-        # Check for any slaves that have timed out and remove them if necessary
-        self.check_slaves_timeout()
-        
-        # Assign waypoints to any slaves that are ready and awaiting tasks
-        self.waypoint_manager.assign_waiting_slaves()
+        # Attempt to decode the JSON message
+        try:
+            data = json.loads(msg.data)
+            slave_ns = data['robot_namespace']
+        except (json.JSONDecodeError, KeyError):
+            self.get_logger().error("Invalid /first_waypoint_reached message (JSON or missing keys).")
+            return
 
-    def check_slaves_timeout(self):
-        """
-        Identifies and removes slaves that have exceeded the heartbeat timeout.
-        
-        This method iterates through all registered slaves and checks if the time since 
-        their last heartbeat exceeds the predefined timeout threshold (`self.timeout`). 
-        Slaves that have timed out are removed from the active slaves list, and any 
-        occupied edges they were traversing are freed.
-        """
-        # Get the current time in seconds from the ROS2 clock
-        current_time = self.get_clock().now().nanoseconds / 1e9
-        
-        # List to keep track of slaves that need to be removed due to timeout
-        slaves_to_remove = []
+        # If not waiting for first waypoints, ignore the notification
+        if not self.waiting_for_first_waypoints:
+            self.get_logger().debug(f"Ignoring notification from {slave_ns}, not waiting anymore.")
+            return
 
-        # Iterate through all registered slaves to check for timeouts
-        for slave_ns, slave in self.slaves.items():
-            # Calculate the elapsed time since the last heartbeat
-            if current_time - slave.last_seen_time > self.timeout:
-                # Log a warning indicating that the slave has timed out
-                self.get_logger().warn(f"Slave {slave_ns} has timed out. Removing from active slaves.")
-                # Mark the slave for removal
-                slaves_to_remove.append(slave_ns)
+        # Add the slave_ns to the set of slaves that have reached their first waypoint
+        self.slaves_that_reported_first_wp.add(slave_ns)
+        self.get_logger().info(f"Slave '{slave_ns}' has reached its first waypoint.")
 
-        # Remove the timed-out slaves from the tracking system
-        for slave_ns in slaves_to_remove:
-            if slave_ns in self.slaves:
-                s = self.slaves[slave_ns]
-                # If the slave was traversing an edge, free that edge
-                if s.current_edge is not None and s.current_edge in self.occupied_edges:
-                    self.occupied_edges.remove(s.current_edge)
-                    occupant = self.edge_occupants.pop(s.current_edge, None)
-                    self.get_logger().info(
-                        f"Freed edge {s.current_edge} from occupant={occupant} due to slave timeout."
-                    )
+        # Get the current set of registered slaves
+        current_slaves = set(self.slaves.keys())
 
-                # Remove the slave from the tracking dictionary
-                del self.slaves[slave_ns]
-                self.get_logger().warn(f"Removed slave {slave_ns} due to timeout.")
+        # Check if all active slaves have reported reaching their first waypoint
+        if current_slaves.issubset(self.slaves_that_reported_first_wp) and len(current_slaves) > 0:
+            self.get_logger().info("All active slaves have reached their first waypoint. Starting subsequent assignments.")
 
-        # If any slaves were removed, initiate repartitioning and waypoint reassignment
-        if slaves_to_remove:
-            self.get_logger().info("Repartitioning and reassigning waypoints after slave removal.")
+            # Set the flag to stop waiting for first waypoints
+            self.waiting_for_first_waypoints = False
+
+            # Unsubscribe from the '/first_waypoint_reached' topic as it's no longer needed
+            if self.first_wp_reached_subscriber is not None:
+                self.destroy_subscription(self.first_wp_reached_subscriber)
+                self.first_wp_reached_subscriber = None
+                self.get_logger().info("Unsubscribed from '/first_waypoint_reached'.")
+
+            # Proceed with assigning subsequent waypoints
             self.waypoint_manager.repartition_and_assign_waypoints()

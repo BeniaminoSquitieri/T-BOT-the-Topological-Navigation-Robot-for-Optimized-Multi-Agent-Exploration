@@ -63,6 +63,7 @@ class MasterNavigationNode(Node, MasterCallbacks):
           8. Sets up a periodic timer for maintenance tasks such as checking slave timeouts and assigning waypoints.
           9. Initializes tracking structures for slaves and edge occupancy.
           10. Resets occupied edges and occupants to ensure a clean start.
+          11. Subscribes to '/first_waypoint_reached' to handle first waypoint notifications from slaves.
           
         Raises:
             FileNotFoundError: If the navigation graph file does not exist at the specified path.
@@ -72,7 +73,7 @@ class MasterNavigationNode(Node, MasterCallbacks):
         
         # Initialize the MasterCallbacks class to set up callback methods
         MasterCallbacks.__init__(self)
-    
+
         # ---------------------------
         # Parameter Declaration and Retrieval
         # ---------------------------
@@ -131,6 +132,7 @@ class MasterNavigationNode(Node, MasterCallbacks):
         # ---------------------------
         # Initialize the HeartbeatManager to handle heartbeat publishing for the master node
         self.heartbeat_manager = HeartbeatManager(self)
+        self.heartbeat_manager.start_publishing()
     
         # Initialize the WaypointManager to handle waypoint assignments to slaves
         self.waypoint_manager = WaypointManager(self)
@@ -163,9 +165,21 @@ class MasterNavigationNode(Node, MasterCallbacks):
         # Log an informational message indicating successful initialization
         self.get_logger().info("Master node initialized with undirected CPP approach.")
     
-    # ===================================================
-    # Slave Timeout Management
-    # ===================================================
+        # ---------------------------
+        # Subscription to '/first_waypoint_reached'
+        # ---------------------------
+        # Initialize a subscriber to receive first waypoint reached notifications from slaves
+        self.first_wp_reached_subscriber = self.create_subscription(
+            String,
+            '/first_waypoint_reached',
+            self.on_first_waypoint_reached,  # Callback defined in MasterCallbacks
+            10
+        )
+        self.get_logger().info("Subscribed to '/first_waypoint_reached' for first waypoint notifications.")
+    
+        # Initialize tracking structures for first waypoint notifications
+        self.slaves_that_reported_first_wp = set()
+        self.waiting_for_first_waypoints = False
     
     def check_slaves_timeout(self):
         """
@@ -175,15 +189,6 @@ class MasterNavigationNode(Node, MasterCallbacks):
         their last heartbeat exceeds the predefined timeout threshold (`self.timeout`). Slaves that 
         have timed out are removed from the active slaves list, and any edges they were traversing 
         are freed to allow reassignment to other slaves.
-        
-        Process:
-          1. Retrieve the current time from the ROS2 clock.
-          2. Iterate through all registered slaves to determine if any have timed out.
-          3. For each timed-out slave:
-             a. If the slave was traversing an edge, remove that edge from the occupied set.
-             b. Remove the slave from the tracking dictionary.
-             c. Log the removal action.
-          4. If any slaves were removed, initiate waypoint repartitioning and reassignment.
         """
         # Get the current time in seconds using the ROS2 clock
         current_time = self.get_clock().now().nanoseconds / 1e9
@@ -223,10 +228,6 @@ class MasterNavigationNode(Node, MasterCallbacks):
             # Call the WaypointManager to handle repartitioning and assigning new waypoints
             self.waypoint_manager.repartition_and_assign_waypoints()
     
-    # ===================================================
-    # Timer Callback for Periodic Maintenance
-    # ===================================================
-    
     def timer_callback(self):
         """
         Periodic callback triggered by a ROS2 timer to perform maintenance tasks.
@@ -243,10 +244,6 @@ class MasterNavigationNode(Node, MasterCallbacks):
         self.check_slaves_timeout()
         # Assign waypoints to any slaves that are ready and awaiting tasks
         self.waypoint_manager.assign_waiting_slaves()
-    
-    # ===================================================
-    # Occupied Edges Management
-    # ===================================================
     
     def reset_occupied_edges(self):
         """
@@ -282,7 +279,15 @@ def main(args=None):
     # Instantiate the MasterNavigationNode
     node = MasterNavigationNode()
     try:
+        # Set the flag to wait for all slaves to reach their first waypoint
+        node.waiting_for_first_waypoints = True
+        # Clear any previous records of slaves that reported reaching the first waypoint
+        node.slaves_that_reported_first_wp.clear()
+        # Assign initial offsets along the global CPP route to slaves
+        node.waypoint_manager.assign_offsets_along_route()
+    
         # Spin the node to keep it active and processing callbacks
+        node.get_logger().info("MasterNavigationNode is now spinning.")
         rclpy.spin(node)
     except KeyboardInterrupt:
         # Allow the node to be interrupted gracefully via keyboard (e.g., Ctrl+C)

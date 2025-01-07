@@ -8,7 +8,6 @@ import time
 import networkx as nx
 from threading import Lock, Event
 import random
-import sys
 
 # Master Tools (callbacks, heartbeat, waypoints, graph utils)
 from fleet_turtlebot4_navigation.master.master_callbacks import MasterCallbacks
