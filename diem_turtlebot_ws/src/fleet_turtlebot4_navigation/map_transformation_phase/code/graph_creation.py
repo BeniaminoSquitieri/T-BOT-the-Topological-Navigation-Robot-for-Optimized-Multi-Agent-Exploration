@@ -10,40 +10,46 @@ from scipy.ndimage import convolve
 
 def check_line_passes_through_skeleton(node1, node2, skeleton, tolerance):
     """
-    Verifica se una linea tra due nodi passa attraverso la skeleton con una certa tolleranza.
-    
-    Parametri:
-        node1 (tuple): Coordinate del primo nodo (y, x).
-        node2 (tuple): Coordinate del secondo nodo (y, x).
-        skeleton (numpy.ndarray): La mappa scheletrica di Voronoi.
-        tolerance (float): Proporzione minima di pixel lungo la linea che devono appartenere alla skeleton.
-                           Valore tra 0 e 1. Default è 0.06 (6%).
-    
-    Ritorna:
-        bool: True se la linea passa attraverso la skeleton con la tolleranza richiesta, False altrimenti.
+    Checks whether a line between two nodes intersects the skeleton with a specified tolerance.
+
+    This function utilizes Bresenham's line algorithm to determine the pixels that form a straight
+    line between two nodes. It then assesses the proportion of these pixels that lie on the skeleton.
+    If the proportion of skeleton pixels meets or exceeds the given tolerance, the line is considered
+    to pass through the skeleton, indicating a valid navigable path.
+
+    Parameters:
+        node1 (tuple): Coordinates of the first node in pixel space (y, x).
+        node2 (tuple): Coordinates of the second node in pixel space (y, x).
+        skeleton (numpy.ndarray): The skeletonized Voronoi map representing navigable pathways.
+        tolerance (float): The minimum proportion of pixels along the line that must belong to the skeleton.
+                           Value should be between 0 and 1. Default is 0.06 (6%).
+
+    Returns:
+        bool: True if the line passes through the skeleton with the required tolerance, False otherwise.
     """
     y0, x0 = node1
     y1, x1 = node2
 
-    # Ottieni i pixel lungo la linea usando l'algoritmo di Bresenham
+    # Generate the pixel coordinates along the line using Bresenham's algorithm
     rr, cc = draw_line(y0, x0, y1, x1)
 
-    # Verifica che gli indici siano all'interno dei limiti della skeleton
+    # Ensure that the pixel indices are within the bounds of the skeleton map
     valid_indices = (rr >= 0) & (rr < skeleton.shape[0]) & \
                     (cc >= 0) & (cc < skeleton.shape[1])
     
     rr = rr[valid_indices]
     cc = cc[valid_indices]
-    # print(cc)
+
     if rr.size == 0 or cc.size == 0:
         logging.debug(f"Line from {node1} to {node2} is out of skeleton bounds.")
         return False
 
-    # Controlla quanti pixel lungo la linea sono nella skeleton
+    # Determine which pixels along the line are part of the skeleton
     line_skeleton = skeleton[rr, cc]
-    # print(line_skeleton)
+
+    # Calculate the proportion of skeleton pixels along the line
     proportion = np.sum(line_skeleton == 1) / len(line_skeleton)
-    # print(proportion)
+
     if proportion >= tolerance:
         logging.debug(f"Line from {node1} to {node2} passes through the skeleton with proportion {proportion:.2f}.")
         return True
@@ -54,37 +60,47 @@ def check_line_passes_through_skeleton(node1, node2, skeleton, tolerance):
 
 def create_topological_graph_using_skeleton(voronoi_skeleton, config):
     """
-    Crea un grafo topologico basato sulla skeleton di Voronoi.
-    
-    Parametri:
-        voronoi_skeleton (numpy.ndarray): La mappa scheletrica di Voronoi.
-        config (Config): Oggetto di configurazione con parametri dinamici.
-    
-    Ritorna:
-        networkx.Graph: Il grafo topologico non orientato.
+    Constructs a topological graph based on the skeletonized Voronoi map.
+
+    This function identifies critical nodes (intersections and endpoints) within the skeleton
+    and connects them based on proximity and navigability. It employs clustering to merge nearby
+    nodes, ensuring a simplified and efficient graph structure. The resulting graph represents
+    the essential navigable pathways within the environment.
+
+    Parameters:
+        voronoi_skeleton (numpy.ndarray): The skeletonized Voronoi map indicating navigable paths.
+        config (Config): Configuration object containing dynamic parameters such as merge_threshold
+                        and max_connection_distance.
+
+    Returns:
+        networkx.Graph: The constructed topological graph with nodes and edges representing navigable paths.
+
+    Raises:
+        ValueError: If no nodes are detected within the skeletonized map.
     """
-    # Cambia il grafo in non orientato
+    # Initialize an undirected graph to represent the topological map
     topo_map = ntx.Graph()
 
-    # Definisci un kernel per contare i vicini (escludendo il pixel centrale)
+    # Define a convolution kernel to count the number of neighboring skeleton pixels
+    # The center is set to 0 to exclude the current pixel from the count
     kernel = np.array([[1, 1, 1],
                        [1, 0, 1],
                        [1, 1, 1]], dtype=int)
 
-    # Conta il numero di vicini per ogni pixel nella skeleton
+    # Apply convolution to count neighbors for each skeleton pixel
     neighbor_count = convolve(voronoi_skeleton.astype(int), kernel, mode='constant', cval=0)
 
-    # Identifica i nodi agli incroci o agli endpoint (dove il numero di vicini è diverso da 2)
+    # Identify nodes at intersections or endpoints where the number of neighbors is not equal to 2
     node_positions = np.column_stack(np.where((voronoi_skeleton == 1) & (neighbor_count != 2)))
 
     if node_positions.size == 0:
-        logging.error("Nessun nodo rilevato nella skeleton. Controlla il processo di pulizia della mappa.")
-        raise ValueError("Nessun nodo rilevato nella skeleton.")
+        logging.error("No nodes detected in the skeleton. Please verify the map cleaning process.")
+        raise ValueError("No nodes detected in the skeleton.")
 
-    # Applica DBSCAN per unire nodi vicini
+    # Apply DBSCAN clustering to merge nodes that are in close proximity, reducing redundancy
     clustering = DBSCAN(eps=config.merge_threshold, min_samples=1).fit(node_positions)
 
-    # Calcola il centroide di ogni cluster per ottenere nodi fusi e assegnare etichette
+    # Calculate centroids of each cluster to represent merged nodes
     fused_nodes = []
     nodes_with_labels = []
     for i, cluster_id in enumerate(np.unique(clustering.labels_), start=1):
@@ -94,20 +110,33 @@ def create_topological_graph_using_skeleton(voronoi_skeleton, config):
         label = f"node_{i}"
         nodes_with_labels.append((tuple(centroid), {"label": label}))
 
-    logging.info(f"Fusione dei nodi completata. Numero di nodi dopo la fusione: {len(fused_nodes)}")
+    logging.info(f"Node fusion completed. Number of nodes after merging: {len(fused_nodes)}")
 
-    # Aggiungi i nodi fusi al grafo con le etichette
+    # Add fused nodes with labels to the topological graph
     topo_map.add_nodes_from(nodes_with_labels)
 
-    # Costruisci un KD-Tree per cercare efficientemente nodi vicini
+    # Construct a KD-Tree for efficient spatial queries of node positions
     node_tree = cKDTree(fused_nodes)
 
-    # Trova coppie di nodi entro la distanza massima
+    # Find all unique pairs of nodes that are within the maximum connection distance
     pairs = node_tree.query_pairs(r=config.max_connection_distance)
 
-    logging.info(f"Numero di coppie di nodi entro {config.max_connection_distance} pixel: {len(pairs)}")
+    logging.info(f"Number of node pairs within {config.max_connection_distance} pixels: {len(pairs)}")
 
     if not pairs:
-        logging.warning("Nessuna coppia di nodi trovata entro la distanza massima di connessione.")
+        logging.warning("No node pairs found within the maximum connection distance.")
+
+    # Iterate through each pair to determine if a valid connection exists
+    for (i, j) in pairs:
+        node1 = fused_nodes[i]
+        node2 = fused_nodes[j]
+
+        # Check if the line between node1 and node2 passes through the skeleton with the required tolerance
+        if check_line_passes_through_skeleton(node1, node2, voronoi_skeleton, config.line_tolerance):
+            label1 = topo_map.nodes[fused_nodes[i]]["label"]
+            label2 = topo_map.nodes[fused_nodes[j]]["label"]
+            distance = np.linalg.norm(np.array(node1) - np.array(node2))
+            topo_map.add_edge(label1, label2, distance=distance)
+            logging.debug(f"Edge added between {label1} and {label2} with distance {distance:.2f}.")
 
     return topo_map

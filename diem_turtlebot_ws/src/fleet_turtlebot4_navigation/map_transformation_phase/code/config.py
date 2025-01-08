@@ -25,7 +25,6 @@ class Config:
         self.free_thresh = config_data.get('free_thresh')
         self.merge_threshold = config_data.get('merge_threshold', 50)
         self.max_connection_distance = config_data.get('max_connection_distance', 100000)
-        self.line_tolerance = config_data.get('max_connection_distance', 0.06)
         # Verifica se il percorso dell'immagine esiste
         if cv2.imread(self.image_path, cv2.IMREAD_GRAYSCALE) is None:
             raise FileNotFoundError(f"Errore: impossibile aprire il file {self.image_path}")

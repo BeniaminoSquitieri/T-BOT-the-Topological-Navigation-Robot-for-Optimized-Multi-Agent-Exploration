@@ -1,102 +1,102 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import argparse          # Per la gestione degli argomenti da riga di comando
-import json              # Per leggere e scrivere file JSON
-import cv2               # OpenCV, per l'elaborazione delle immagini
-import numpy as np       # NumPy, per operazioni numeriche efficienti su array
-import yaml              # Per leggere file di configurazione in formato YAML
-import math              # Per operazioni matematiche di base
-import os                # Per interagire con il sistema operativo (es. percorsi di file)
+import argparse          # For handling command-line arguments
+import json              # For reading and writing JSON files
+import cv2               # OpenCV, for image processing
+import numpy as np       # NumPy, for efficient numerical operations on arrays
+import yaml              # For reading configuration files in YAML format
+import math              # For basic mathematical operations
+import os                # For interacting with the operating system (e.g., file paths)
 
-# Importa la funzione 'line' di Bresenham dalla libreria scikit-image
+# Import the 'line' function from Bresenham's algorithm in scikit-image
 from skimage.draw import line
 
-# Prova a importare KDTree da scikit-learn per l'efficiente ricerca dei vicini
+# Attempt to import KDTree from scikit-learn for efficient neighbor searching
 try:
     from sklearn.neighbors import KDTree
-    USE_SKLEARN = True  # Flag per indicare se sklearn è disponibile
+    USE_SKLEARN = True  # Flag to indicate if sklearn is available
 except ImportError:
-    # Se sklearn non è installato, imposta il flag a False e utilizza un metodo alternativo
+    # If sklearn is not installed, set the flag to False and use an alternative method
     USE_SKLEARN = False
 
-# Importa NetworkX per la gestione e manipolazione dei grafi
+# Import NetworkX for graph management and manipulation
 import networkx as nx
 
 ###############################################################################
-# Funzioni di supporto
+# Support Functions
 ###############################################################################
 
 def load_map_info(yaml_file):
     """
-    Carica le informazioni di mappa da un file .yaml.
+    Loads map information from a .yaml file.
 
-    Parametri:
-        yaml_file (str): Percorso al file YAML contenente le informazioni della mappa.
+    Parameters:
+        yaml_file (str): Path to the YAML file containing map information.
 
-    Ritorna:
-        dict: Dizionario contenente le informazioni della mappa, inclusi percorso immagine,
-              risoluzione, origine, e soglie per pixel occupati/liberi.
+    Returns:
+        dict: Dictionary containing map information, including image path,
+              resolution, origin, and thresholds for occupied/free pixels.
     """
-    # Apre e legge il file YAML
+    # Open and read the YAML file
     with open(yaml_file, 'r') as f:
-        data = yaml.safe_load(f)  # Carica i dati YAML in un dizionario Python
+        data = yaml.safe_load(f)  # Load YAML data into a Python dictionary
 
-    map_info = {}  # Dizionario per memorizzare le informazioni della mappa
+    map_info = {}  # Dictionary to store map information
 
-    # Determina la directory del file YAML per gestire percorsi relativi
+    # Determine the directory of the YAML file to handle relative paths
     yaml_dir = os.path.dirname(os.path.abspath(yaml_file))
 
-    # Estrae il percorso relativo dell'immagine dal file YAML
-    image_rel_path = data["image"]  # Esempio: './diem_map.pgm'
+    # Extract the relative image path from the YAML file
+    image_rel_path = data["image"]  # Example: './diem_map.pgm'
 
-    # Costruisce il percorso assoluto dell'immagine combinando la directory YAML e il percorso relativo
+    # Construct the absolute image path by combining the YAML directory and the relative path
     image_path = os.path.join(yaml_dir, image_rel_path)
 
-    # Popola il dizionario map_info con le informazioni rilevanti
+    # Populate the map_info dictionary with relevant information
     map_info["image_path"] = image_path
-    map_info["resolution"] = float(data["resolution"])  # Risoluzione in metri/pixel
-    map_info["origin"] = data["origin"]  # Origine della mappa: [origin_x, origin_y, origin_theta]
-    map_info["negate"] = int(data.get("negate", 0))  # Flag per invertire i pixel (0 o 1)
-    map_info["occupied_thresh"] = float(data.get("occupied_thresh", 0.65))  # Soglia per pixel occupati
-    map_info["free_thresh"] = float(data.get("free_thresh", 0.196))  # Soglia per pixel liberi
+    map_info["resolution"] = float(data["resolution"])  # Resolution in meters/pixel
+    map_info["origin"] = data["origin"]  # Map origin: [origin_x, origin_y, origin_theta]
+    map_info["negate"] = int(data.get("negate", 0))  # Flag to invert pixels (0 or 1)
+    map_info["occupied_thresh"] = float(data.get("occupied_thresh", 0.65))  # Threshold for occupied pixels
+    map_info["free_thresh"] = float(data.get("free_thresh", 0.196))  # Threshold for free pixels
 
-    return map_info  # Restituisce il dizionario con le informazioni della mappa
+    return map_info  # Returns the dictionary with map information
 
 
 def load_occupancy_image(map_info):
     """
-    Carica la mappa di occupazione in scala di grigi utilizzando OpenCV.
+    Loads the occupancy map in grayscale using OpenCV.
 
-    Parametri:
-        map_info (dict): Dizionario contenente le informazioni della mappa.
+    Parameters:
+        map_info (dict): Dictionary containing map information.
 
-    Ritorna:
-        tuple: Una tupla contenente l'immagine caricata (numpy.ndarray),
-               l'altezza (int) e la larghezza (int) dell'immagine.
+    Returns:
+        tuple: A tuple containing the loaded image (numpy.ndarray),
+               height (int), and width (int) of the image.
     """
-    # Carica l'immagine usando OpenCV in modalità non modificata
+    # Load the image using OpenCV in unchanged mode
     img = cv2.imread(map_info["image_path"], cv2.IMREAD_UNCHANGED)
 
-    # Se l'immagine non viene caricata correttamente, solleva un'eccezione
+    # If the image is not loaded correctly, raise an exception
     if img is None:
-        raise FileNotFoundError(f"Impossibile caricare l'immagine: {map_info['image_path']}")
+        raise FileNotFoundError(f"Unable to load image: {map_info['image_path']}")
 
-    # Se il flag 'negate' è impostato a 1, inverte i valori dei pixel
+    # If the 'negate' flag is set to 1, invert the pixel values
     if map_info["negate"] == 1:
-        img = 255 - img  # Inversione dei pixel (bianco diventa nero e viceversa)
+        img = 255 - img  # Invert pixels (white becomes black and vice versa)
 
-    # Ottiene le dimensioni dell'immagine (altezza e larghezza)
+    # Get the dimensions of the image (height and width)
     height, width = img.shape
 
-    return img, height, width  # Restituisce l'immagine e le sue dimensioni
+    return img, height, width  # Returns the image and its dimensions
 
 
 def load_nodes(json_file):
     """
-    Carica i nodi (waypoints) da un file JSON.
+    Loads nodes (waypoints) from a JSON file.
 
-    La struttura attesa del file JSON:
+    Expected JSON structure:
     {
       "nodes": [
         { "label": "node_1", "x": ..., "y": ... },
@@ -104,530 +104,530 @@ def load_nodes(json_file):
       ]
     }
 
-    Parametri:
-        json_file (str): Percorso al file JSON contenente i nodi.
+    Parameters:
+        json_file (str): Path to the JSON file containing nodes.
 
-    Ritorna:
-        list: Lista di tuple, ognuna contenente (label, x, y) per ogni nodo.
+    Returns:
+        list: List of tuples, each containing (label, x, y) for each node.
     """
-    # Apre e legge il file JSON
+    # Open and read the JSON file
     with open(json_file, 'r') as f:
-        data = json.load(f)  # Carica i dati JSON in un dizionario Python
+        data = json.load(f)  # Load JSON data into a Python dictionary
 
-    nodes_data = data["nodes"]  # Estrae la lista dei nodi
+    nodes_data = data["nodes"]  # Extract the list of nodes
 
-    nodes_list = []  # Lista per memorizzare i nodi come tuple
+    nodes_list = []  # List to store nodes as tuples
 
-    # Itera su ogni nodo nella lista
+    # Iterate over each node in the list
     for nd in nodes_data:
-        label = nd["label"]  # Etichetta del nodo (es. "node_1")
-        x = nd["x"]          # Coordinata x nel sistema di riferimento del mondo
-        y = nd["y"]          # Coordinata y nel sistema di riferimento del mondo
-        nodes_list.append((label, x, y))  # Aggiunge la tupla alla lista
+        label = nd["label"]  # Node label (e.g., "node_1")
+        x = nd["x"]          # x-coordinate in the world reference system
+        y = nd["y"]          # y-coordinate in the world reference system
+        nodes_list.append((label, x, y))  # Add the tuple to the list
 
-    return nodes_list  # Restituisce la lista dei nodi
+    return nodes_list  # Returns the list of nodes
 
 
 def world_to_map(x_world, y_world, map_info, map_height):
     """
-    Converte coordinate del mondo (x_world, y_world) in coordinate di pixel (row, col) dell'immagine.
+    Converts world coordinates (x_world, y_world) to pixel coordinates (row, col) in the image.
 
-    Assume che:
-      - origin_x e origin_y siano in basso a sinistra dell'immagine
-      - la risoluzione sia in metri/pixel
-      - l'immagine in OpenCV abbia l'origine (0,0) in alto a sinistra
+    Assumes that:
+      - origin_x and origin_y are at the bottom-left of the image
+      - resolution is in meters/pixel
+      - OpenCV image has the origin (0,0) at the top-left
 
-    Formula di conversione:
+    Conversion formula:
       col = int( (x_world - origin_x) / resolution )
       row = int( map_height - 1 - (y_world - origin_y) / resolution )
 
-    Parametri:
-        x_world (float): Coordinata x nel sistema di riferimento del mondo.
-        y_world (float): Coordinata y nel sistema di riferimento del mondo.
-        map_info (dict): Dizionario contenente le informazioni della mappa.
-        map_height (int): Altezza dell'immagine in pixel.
+    Parameters:
+        x_world (float): x-coordinate in the world reference system.
+        y_world (float): y-coordinate in the world reference system.
+        map_info (dict): Dictionary containing map information.
+        map_height (int): Height of the image in pixels.
 
-    Ritorna:
-        tuple: Coordinate di pixel (row, col).
+    Returns:
+        tuple: Pixel coordinates (row, col).
     """
-    # Estrae le coordinate di origine e la risoluzione dal dizionario map_info
+    # Extract origin coordinates and resolution from the map_info dictionary
     origin_x, origin_y, _ = map_info["origin"]
     resolution = map_info["resolution"]
 
-    # Calcola le coordinate in pixel come float
-    col_f = (x_world - origin_x) / resolution  # Coordinata colonna
-    row_f = (y_world - origin_y) / resolution  # Coordinata riga
+    # Calculate the pixel coordinates as floats
+    col_f = (x_world - origin_x) / resolution  # Column coordinate
+    row_f = (y_world - origin_y) / resolution  # Row coordinate
 
-    # Converte le coordinate float in interi usando floor
+    # Convert float coordinates to integers using floor
     col = int(math.floor(col_f))
-    row = int(math.floor(map_height - 1 - row_f))  # Inverte l'asse y per OpenCV
+    row = int(math.floor(map_height - 1 - row_f))  # Invert y-axis for OpenCV
 
-    return row, col  # Restituisce la tupla (row, col)
+    return row, col  # Returns the tuple (row, col)
 
 
 def is_free_pixel(img, row, col, free_value_threshold):
     """
-    Verifica se un pixel specificato è considerato 'libero' o 'occupato'.
+    Checks if a specified pixel is considered 'free' or 'occupied'.
 
-    Parametri:
-        img (numpy.ndarray): Immagine della mappa in scala di grigi.
-        row (int): Indice della riga del pixel.
-        col (int): Indice della colonna del pixel.
-        free_value_threshold (float): Soglia per determinare se un pixel è libero.
+    Parameters:
+        img (numpy.ndarray): Grayscale map image.
+        row (int): Row index of the pixel.
+        col (int): Column index of the pixel.
+        free_value_threshold (float): Threshold to determine if a pixel is free.
 
-    Ritorna:
-        bool: True se il pixel è libero, False altrimenti.
+    Returns:
+        bool: True if the pixel is free, False otherwise.
     """
-    h, w = img.shape  # Ottiene le dimensioni dell'immagine
+    h, w = img.shape  # Get image dimensions
 
-    # Verifica se le coordinate sono fuori dai limiti dell'immagine
+    # Check if the coordinates are out of image bounds
     if row < 0 or row >= h or col < 0 or col >= w:
-        return False  # Fuori dai limiti => considerato occupato
+        return False  # Out of bounds => considered occupied
 
-    # Verifica se il valore del pixel è maggiore o uguale alla soglia
+    # Check if the pixel value is greater than or equal to the threshold
     return (img[row, col] >= free_value_threshold)
 
 
 def check_collision(img, r1, c1, r2, c2, free_value_threshold=50, collision_tolerance=1.0):
     """
-    Verifica se il segmento tra due pixel attraversa aree occupate della mappa.
+    Checks if the segment between two pixels crosses occupied areas of the map.
 
-    Utilizza l'algoritmo di Bresenham per tracciare la linea tra (r1, c1) e (r2, c2).
-    Se la proporzione di pixel liberi lungo la linea è >= collision_tolerance, 
-    allora non c'è collisione. Altrimenti, c'è collisione.
+    Uses Bresenham's algorithm to trace the line between (r1, c1) and (r2, c2).
+    If the proportion of free pixels along the line is >= collision_tolerance,
+    then there is no collision. Otherwise, there is a collision.
 
-    Parametri:
-        img (numpy.ndarray): Immagine della mappa in scala di grigi.
-        r1 (int): Riga di partenza.
-        c1 (int): Colonna di partenza.
-        r2 (int): Riga di arrivo.
-        c2 (int): Colonna di arrivo.
-        free_value_threshold (float, optional): Soglia per considerare un pixel libero. Default è 50.
-        collision_tolerance (float, optional): Percentuale minima di pixel liberi per considerare il segmento sgombro. Default è 1.0 (100%).
+    Parameters:
+        img (numpy.ndarray): Grayscale map image.
+        r1 (int): Starting row.
+        c1 (int): Starting column.
+        r2 (int): Ending row.
+        c2 (int): Ending column.
+        free_value_threshold (float, optional): Threshold to consider a pixel free. Default is 50.
+        collision_tolerance (float, optional): Minimum percentage of free pixels to consider the segment clear. Default is 1.0 (100%).
 
-    Ritorna:
-        bool: True se c'è collisione, False se non c'è collisione.
+    Returns:
+        bool: True if there is a collision, False if there is no collision.
     """
-    # Traccia la linea tra i due punti usando l'algoritmo di Bresenham
-    rr, cc = line(r1, c1, r2, c2)  # Liste di righe e colonne dei pixel lungo la linea
+    # Trace the line between the two points using Bresenham's algorithm
+    rr, cc = line(r1, c1, r2, c2)  # Lists of row and column indices along the line
 
-    total_pixels = len(rr)  # Numero totale di pixel lungo la linea
-    free_pixels = 0         # Contatore dei pixel liberi
+    total_pixels = len(rr)  # Total number of pixels along the line
+    free_pixels = 0         # Counter for free pixels
 
-    # Itera su ogni pixel lungo la linea
+    # Iterate over each pixel along the line
     for i in range(total_pixels):
         if is_free_pixel(img, rr[i], cc[i], free_value_threshold):
-            free_pixels += 1  # Incrementa se il pixel è libero
+            free_pixels += 1  # Increment if the pixel is free
 
-    # Calcola la proporzione di pixel liberi
+    # Calculate the proportion of free pixels
     free_ratio = free_pixels / total_pixels
 
-    # Se la proporzione di pixel liberi è maggiore o uguale alla tolleranza,
-    # considera il segmento come sgombro (nessuna collisione)
+    # If the proportion of free pixels is greater than or equal to the tolerance,
+    # consider the segment clear (no collision)
     if free_ratio >= collision_tolerance:
-        return False  # Nessuna collisione
+        return False  # No collision
     else:
-        return True   # C'è collisione
+        return True   # Collision exists
 
 
 def compute_distance(x1, y1, x2, y2):
     """
-    Calcola la distanza euclidea tra due punti nel piano.
+    Calculates the Euclidean distance between two points in the plane.
 
-    Parametri:
-        x1 (float): Coordinata x del primo punto.
-        y1 (float): Coordinata y del primo punto.
-        x2 (float): Coordinata x del secondo punto.
-        y2 (float): Coordinata y del secondo punto.
+    Parameters:
+        x1 (float): x-coordinate of the first point.
+        y1 (float): y-coordinate of the first point.
+        x2 (float): x-coordinate of the second point.
+        y2 (float): y-coordinate of the second point.
 
-    Ritorna:
-        float: Distanza euclidea tra i due punti.
+    Returns:
+        float: Euclidean distance between the two points.
     """
-    distance = math.sqrt((x2 - x1)**2 + (y2 - y1)**2)  # Formula della distanza euclidea
-    return distance  # Restituisce la distanza
+    distance = math.sqrt((x2 - x1)**2 + (y2 - y1)**2)  # Euclidean distance formula
+    return distance  # Returns the distance
 
 
 ###############################################################################
-# Funzioni Modulari
+# Modular Functions
 ###############################################################################
 
 def build_initial_graph(nodes, map_info, img, h, k, max_edges_per_node, free_value_thresh, collision_tolerance, max_distance):
     """
-    Costruisce il grafo iniziale basato sul K-Nearest Neighbors (K-NN),
-    tenendo conto delle collisioni e della distanza massima.
+    Builds the initial graph based on K-Nearest Neighbors (K-NN),
+    taking into account collisions and maximum distance.
 
-    Parametri:
-        nodes (list): Lista di nodi come tuple (label, x, y).
-        map_info (dict): Dizionario contenente le informazioni della mappa.
-        img (numpy.ndarray): Immagine della mappa in scala di grigi.
-        h (int): Altezza dell'immagine in pixel.
-        k (int): Numero di vicini da considerare per ogni nodo (K-NN).
-        max_edges_per_node (int): Numero massimo di archi per nodo dopo il controllo collisioni.
-        free_value_thresh (float): Soglia per considerare un pixel libero.
-        collision_tolerance (float): Percentuale minima di pixel liberi per considerare un segmento sgombro.
-        max_distance (float): Distanza euclidea massima ammessa per connettere due nodi.
+    Parameters:
+        nodes (list): List of nodes as tuples (label, x, y).
+        map_info (dict): Dictionary containing map information.
+        img (numpy.ndarray): Grayscale map image.
+        h (int): Image height in pixels.
+        k (int): Number of neighbors to consider for each node (K-NN).
+        max_edges_per_node (int): Maximum number of edges per node after collision checks.
+        free_value_thresh (float): Threshold to consider a pixel free.
+        collision_tolerance (float): Minimum percentage of free pixels to consider a segment clear.
+        max_distance (float): Maximum Euclidean distance allowed to connect two nodes.
 
-    Ritorna:
-        list: Lista di archi iniziali come dizionari {"source": ..., "target": ..., "distance": ...}.
+    Returns:
+        list: List of initial edges as dictionaries {"source": ..., "target": ..., "distance": ...}.
     """
-    # Estrae le coordinate dei nodi in un array NumPy per l'elaborazione
-    coords = np.array([[nd[1], nd[2]] for nd in nodes], dtype=np.float32)  # Forma (N, 2)
+    # Extract node coordinates into a NumPy array for processing
+    coords = np.array([[nd[1], nd[2]] for nd in nodes], dtype=np.float32)  # Shape (N, 2)
 
-    # Estrae le etichette dei nodi in una lista separata
-    labels = [nd[0] for nd in nodes]  # Lista di etichette per riferimento
+    # Extract node labels into a separate list
+    labels = [nd[0] for nd in nodes]  # List of labels for reference
 
     if USE_SKLEARN:
-        # Se sklearn è disponibile, utilizza KDTree per trovare i vicini più vicini
-        tree = KDTree(coords)  # Costruisce l'albero KD
-        # Esegue una query K-NN per ogni nodo, includendo se stesso (k+1)
+        # If sklearn is available, use KDTree to find nearest neighbors
+        tree = KDTree(coords)  # Build the KD-Tree
+        # Perform a K-NN query for each node, including itself (k+1)
         all_neighbors_idx = tree.query(coords, k=k+1, return_distance=True)
-        all_distances = all_neighbors_idx[0]  # Matrice delle distanze
-        all_indices = all_neighbors_idx[1]    # Matrice degli indici dei vicini
+        all_distances = all_neighbors_idx[0]  # Distance matrix
+        all_indices = all_neighbors_idx[1]    # Neighbor index matrix
     else:
-        # Se sklearn non è disponibile, utilizza un approccio all-pairs meno efficiente
-        N = len(coords)  # Numero totale di nodi
-        all_indices = []    # Lista per gli indici dei vicini
-        all_distances = []  # Lista per le distanze dei vicini
+        # If sklearn is not available, use a less efficient all-pairs approach
+        N = len(coords)  # Total number of nodes
+        all_indices = []    # List for neighbor indices
+        all_distances = []  # List for neighbor distances
 
         for i in range(N):
-            dlist = []  # Lista temporanea per le distanze e gli indici dei vicini
+            dlist = []  # Temporary list for distances and neighbor indices
 
             for j in range(N):
                 if i == j:
-                    continue  # Salta se è lo stesso nodo
+                    continue  # Skip if it's the same node
 
-                # Calcola la distanza euclidea tra il nodo i e il nodo j
+                # Calculate Euclidean distance between node i and node j
                 dist = compute_distance(coords[i][0], coords[i][1],
                                         coords[j][0], coords[j][1])
-                dlist.append((dist, j))  # Aggiunge la tupla (distanza, indice)
+                dlist.append((dist, j))  # Add the tuple (distance, index)
 
-            # Ordina la lista per distanza crescente
+            # Sort the list by ascending distance
             dlist.sort(key=lambda x: x[0])
 
-            # Prende i primi k vicini
+            # Take the first k neighbors
             knn = dlist[:k]
 
-            # Estrae solo gli indici e le distanze
+            # Extract only the indices and distances
             neighbor_indices = [x[1] for x in knn]
             neighbor_dists = [x[0] for x in knn]
 
-            # Per coerenza con KDTree, aggiunge se stesso come primo vicino
+            # For consistency with KDTree, add itself as the first neighbor
             neighbor_indices = [i] + neighbor_indices
             neighbor_dists = [0.0] + neighbor_dists
 
-            # Aggiunge gli indici e le distanze alle rispettive liste
+            # Add the indices and distances to their respective lists
             all_indices.append(neighbor_indices)
             all_distances.append(neighbor_dists)
 
-        # Converte le liste in array NumPy per l'efficienza
-        all_indices = np.array(all_indices, dtype=int)       # Forma (N, k+1)
-        all_distances = np.array(all_distances, dtype=float)  # Forma (N, k+1)
+        # Convert the lists to NumPy arrays for efficiency
+        all_indices = np.array(all_indices, dtype=int)       # Shape (N, k+1)
+        all_distances = np.array(all_distances, dtype=float)  # Shape (N, k+1)
 
-    # Inizializza una lista di adiacenza per ogni nodo
+    # Initialize an adjacency list for each node
     adjacency_list = [[] for _ in range(len(nodes))]
 
-    # Itera su ogni nodo per determinare i suoi archi
+    # Iterate over each node to determine its edges
     for i in range(len(nodes)):
-        neighbor_idx_row = all_indices[i]      # Indici dei vicini per il nodo i
-        neighbor_dist_row = all_distances[i]   # Distanze dei vicini per il nodo i
+        neighbor_idx_row = all_indices[i]      # Neighbor indices for node i
+        neighbor_dist_row = all_distances[i]   # Neighbor distances for node i
 
-        candidate_list = []  # Lista temporanea per i candidati a essere archi
+        candidate_list = []  # Temporary list for candidate edges
 
-        # Itera su ogni vicino (salta il primo se è lo stesso nodo)
+        # Iterate over each neighbor (skip the first if it's the same node)
         for jj in range(1, len(neighbor_idx_row)):
-            j = neighbor_idx_row[jj]          # Indice del vicino
-            dist_ij = neighbor_dist_row[jj]   # Distanza dal nodo i al nodo j
+            j = neighbor_idx_row[jj]          # Neighbor index
+            dist_ij = neighbor_dist_row[jj]   # Distance from node i to node j
 
             if j == i:
-                continue  # Salta se è lo stesso nodo (già gestito)
+                continue  # Skip if it's the same node (already handled)
 
-            # Verifica se la distanza è entro il limite massimo
+            # Check if the distance is within the maximum allowed
             if dist_ij > max_distance:
-                # Salta questa connessione se la distanza supera il limite
+                # Skip this connection if the distance exceeds the limit
                 continue
 
-            # Estrae le informazioni dei nodi i e j
+            # Extract node information for nodes i and j
             label_i, x_i, y_i = nodes[i]
             label_j, x_j, y_j = nodes[j]
 
-            # Converte le coordinate mondo in pixel per entrambi i nodi
+            # Convert world coordinates to pixel coordinates for both nodes
             r1, c1 = world_to_map(x_i, y_i, map_info, h)
             r2, c2 = world_to_map(x_j, y_j, map_info, h)
 
-            # Verifica se c'è collisione lungo il percorso tra i due nodi
+            # Check for collision along the path between the two nodes
             has_collision = check_collision(
                 img, r1, c1, r2, c2,
                 free_value_threshold=free_value_thresh,
                 collision_tolerance=collision_tolerance
             )
 
-            # Se NON c'è collisione, aggiunge il vicino come candidato
+            # If there is NO collision, add the neighbor as a candidate
             if not has_collision:
-                candidate_list.append((j, dist_ij))  # Aggiunge la tupla (indice, distanza)
+                candidate_list.append((j, dist_ij))  # Add the tuple (index, distance)
 
-            # Se c'è collisione, non aggiunge l'arco
+            # If there is a collision, do not add the edge
 
-        # Ordina i candidati per distanza crescente
+        # Sort the candidates by ascending distance
         candidate_list.sort(key=lambda x: x[1])
 
-        # Tieni solo i primi 'max_edges_per_node' archi per questo nodo
+        # Keep only the first 'max_edges_per_node' edges for this node
         chosen = candidate_list[:max_edges_per_node]
 
-        # Assegna gli archi scelti alla lista di adiacenza del nodo i
+        # Assign the chosen edges to the adjacency list for node i
         adjacency_list[i] = chosen
 
-    # Inizializza una lista per memorizzare gli archi finali
+    # Initialize a list to store the final edges
     edges_out = []
 
-    # Costruisce la lista di archi basata sulla lista di adiacenza
+    # Build the edge list based on the adjacency list
     for i in range(len(nodes)):
-        label_i = nodes[i][0]  # Etichetta del nodo i
+        label_i = nodes[i][0]  # Label of node i
 
         for (j, dist_ij) in adjacency_list[i]:
-            label_j = nodes[j][0]  # Etichetta del nodo j
+            label_j = nodes[j][0]  # Label of node j
 
-            # Crea un dizionario rappresentante l'arco
+            # Create a dictionary representing the edge
             edge_dict = {
-                "source": label_i,      # Nodo di partenza
-                "target": label_j,      # Nodo di arrivo
-                "distance": dist_ij     # Distanza tra i nodi
+                "source": label_i,      # Source node
+                "target": label_j,      # Target node
+                "distance": dist_ij     # Distance between nodes
             }
 
-            # Aggiunge il dizionario alla lista degli archi
+            # Add the dictionary to the edge list
             edges_out.append(edge_dict)
 
-    return edges_out  # Restituisce la lista degli archi iniziali
+    return edges_out  # Returns the list of initial edges
 
 
 def connect_disconnected_components(G, nodes, map_info, img, h, collision_tolerance, free_value_thresh, max_distance, max_edges_per_node):
     """
-    Verifica la connettività del grafo e connette le componenti disconnesse
-    scegliendo le coppie di nodi con la minima distanza euclidea, preferendo nodi con meno archi,
-    entro un limite massimo di distanza e di archi per nodo.
+    Checks the connectivity of the graph and connects disconnected components
+    by selecting pairs of nodes with the minimum Euclidean distance, preferring nodes with fewer edges,
+    within a maximum distance limit and edge per node limit.
 
-    Aggiorna la lista di archi e disegna gli archi aggiunti sull'immagine.
+    Updates the edge list and draws the added edges on the image.
 
-    Parametri:
-        G (networkx.Graph): Grafo NetworkX esistente.
-        nodes (list): Lista di nodi come tuple (label, x, y).
-        map_info (dict): Dizionario contenente le informazioni della mappa.
-        img (numpy.ndarray): Immagine della mappa in scala di grigi.
-        h (int): Altezza dell'immagine in pixel.
-        collision_tolerance (float): Percentuale minima di pixel liberi richiesta.
-        free_value_thresh (float): Soglia per considerare un pixel libero.
-        max_distance (float): Distanza euclidea massima ammessa per connettere due nodi.
-        max_edges_per_node (int): Numero massimo di archi per nodo.
+    Parameters:
+        G (networkx.Graph): Existing NetworkX graph.
+        nodes (list): List of nodes as tuples (label, x, y).
+        map_info (dict): Dictionary containing map information.
+        img (numpy.ndarray): Grayscale map image.
+        h (int): Image height in pixels.
+        collision_tolerance (float): Minimum percentage of free pixels required.
+        free_value_thresh (float): Threshold to consider a pixel free.
+        max_distance (float): Maximum Euclidean distance allowed to connect two nodes.
+        max_edges_per_node (int): Maximum number of edges per node.
 
-    Ritorna:
-        list: Lista di archi aggiunti come dizionari {"source": ..., "target": ..., "distance": ...}.
+    Returns:
+        list: List of added edges as dictionaries {"source": ..., "target": ..., "distance": ...}.
     """
-    # Controlla se il grafo è già completamente connesso
+    # Check if the graph is already fully connected
     if nx.is_connected(G):
-        print("Il grafo è già connesso.")
-        return []  # Nessun arco aggiunto
+        print("The graph is already connected.")
+        return []  # No edges added
 
-    print("Il grafo è disconnesso. Tentativo di connettere le componenti.")
+    print("The graph is disconnected. Attempting to connect the components.")
 
-    # Identifica tutte le componenti connesse nel grafo
-    components = list(nx.connected_components(G))  # Lista di set, ogni set è una componente connessa
-    edges_added = []  # Lista per memorizzare gli archi aggiunti
+    # Identify all connected components in the graph
+    components = list(nx.connected_components(G))  # List of sets, each set is a connected component
+    edges_added = []  # List to store added edges
 
-    # Ottiene il grado corrente di ogni nodo nel grafo
-    degrees = dict(G.degree())  # Dizionario {nodo: grado}
+    # Get the current degree of each node in the graph
+    degrees = dict(G.degree())  # Dictionary {node: degree}
 
-    # Continua ad aggiungere archi finché il grafo non è completamente connesso
+    # Continue adding edges until the graph is fully connected
     while len(components) > 1:
-        candidate_pairs = []  # Lista temporanea per le coppie candidate a connettere le componenti
+        candidate_pairs = []  # Temporary list for candidate pairs to connect components
 
-        # Trova tutte le possibili coppie di componenti da connettere
+        # Find all possible pairs of components to connect
         for i in range(len(components)):
             for j in range(i + 1, len(components)):
-                component_a = components[i]  # Prima componente
-                component_b = components[j]  # Seconda componente
+                component_a = components[i]  # First component
+                component_b = components[j]  # Second component
 
-                # Itera su tutti i nodi nella prima componente
+                # Iterate over all nodes in the first component
                 for node_a in component_a:
-                    # Itera su tutti i nodi nella seconda componente
+                    # Iterate over all nodes in the second component
                     for node_b in component_b:
-                        # Estrae i dati dei nodi (label, x, y)
+                        # Extract node data (label, x, y)
                         node_a_data = next(nd for nd in nodes if nd[0] == node_a)
                         node_b_data = next(nd for nd in nodes if nd[0] == node_b)
 
-                        # Calcola la distanza euclidea tra i due nodi
+                        # Calculate the Euclidean distance between the two nodes
                         distance = compute_distance(
                             node_a_data[1], node_a_data[2],
                             node_b_data[1], node_b_data[2]
                         )
 
-                        # Verifica se la distanza è entro il limite massimo
+                        # Check if the distance is within the maximum allowed
                         if distance > max_distance:
-                            continue  # Salta questa coppia di nodi
+                            continue  # Skip this pair of nodes
 
-                        # Verifica se l'aggiunta dell'arco supererebbe il limite di archi per nodo
+                        # Check if adding the edge would exceed the edge limit per node
                         if degrees.get(node_a, 0) >= max_edges_per_node or degrees.get(node_b, 0) >= max_edges_per_node:
-                            continue  # Salta questa coppia di nodi
+                            continue  # Skip this pair of nodes
 
-                        # Converte le coordinate del mondo in coordinate di mappa (pixel)
+                        # Convert world coordinates to map (pixel) coordinates
                         r1, c1 = world_to_map(node_a_data[1], node_a_data[2], map_info, h)
                         r2, c2 = world_to_map(node_b_data[1], node_b_data[2], map_info, h)
 
-                        # Verifica se c'è collisione lungo il percorso tra i due nodi
+                        # Check for collision along the path between the two nodes
                         has_collision = check_collision(
                             img, r1, c1, r2, c2,
                             free_value_threshold=free_value_thresh,
                             collision_tolerance=collision_tolerance
                         )
 
-                        # Se NON c'è collisione, aggiunge la coppia alla lista dei candidati
+                        # If there is NO collision, add the pair to the candidate list
                         if not has_collision:
-                            # Ottiene i gradi correnti dei nodi
+                            # Get the current degrees of the nodes
                             degree_a = degrees.get(node_a, 0)
                             degree_b = degrees.get(node_b, 0)
 
-                            # Aggiunge una tupla con (distanza, somma dei gradi, nodo_a, nodo_b)
+                            # Add a tuple with (distance, sum of degrees, node_a, node_b)
                             candidate_pairs.append((distance, degree_a + degree_b, node_a, node_b))
 
-        # Se non ci sono coppie candidate, non è possibile connettere ulteriormente le componenti
+        # If there are no candidate pairs, it's impossible to connect the remaining components
         if not candidate_pairs:
-            print("Non è stato possibile connettere tutte le componenti senza collisioni o entro la distanza massima.")
-            break  # Esce dal ciclo per evitare loop infiniti
+            print("Unable to connect all components without collisions or within the maximum distance.")
+            break  # Exit the loop to avoid infinite looping
 
-        # Ordina le coppie candidate: prima per distanza crescente, poi per somma dei gradi (meno archi preferiti)
+        # Sort the candidate pairs: first by ascending distance, then by sum of degrees (fewer edges preferred)
         candidate_pairs.sort(key=lambda x: (x[0], x[1]))
 
-        # Seleziona la migliore coppia (minima distanza, meno archi)
+        # Select the best pair (minimum distance, fewer edges)
         best_pair = candidate_pairs[0]
         distance, degree_sum, node_a, node_b = best_pair
 
-        # Aggiunge l'arco al grafo
+        # Add the edge to the graph
         G.add_edge(node_a, node_b, distance=distance)
 
-        # Crea un dizionario rappresentante l'arco aggiunto
+        # Create a dictionary representing the added edge
         edge_dict = {
-            "source": node_a,    # Nodo di partenza
-            "target": node_b,    # Nodo di arrivo
-            "distance": distance  # Distanza tra i nodi
+            "source": node_a,    # Source node
+            "target": node_b,    # Target node
+            "distance": distance  # Distance between nodes
         }
-        edges_added.append(edge_dict)  # Aggiunge l'arco alla lista degli archi aggiunti
+        edges_added.append(edge_dict)  # Add the edge to the list of added edges
 
-        # Aggiorna i gradi dei nodi coinvolti
+        # Update the degrees of the involved nodes
         degrees[node_a] = degrees.get(node_a, 0) + 1
         degrees[node_b] = degrees.get(node_b, 0) + 1
 
-        # Stampa un messaggio informativo
-        print(f"Aggiungo arco tra '{node_a}' e '{node_b}' per connettere le componenti.")
+        # Print an informational message
+        print(f"Added edge between '{node_a}' and '{node_b}' to connect the components.")
 
-        # Stampa condizionale per analizzare specificamente le connessioni tra node_19 e node_23
+        # Conditional print for analyzing specific connections between node_19 and node_23
         if ((node_a == "node_19" and node_b == "node_23") or
             (node_a == "node_23" and node_b == "node_19")):
-            print(f"Analisi specifica tra '{node_a}' e '{node_b}':")
-            print(f"  Distanza Euclidea: {distance:.2f}")
-            print(f"  Collisione: No")  # Poiché has_collision è False
+            print(f"Specific analysis between '{node_a}' and '{node_b}':")
+            print(f"  Euclidean Distance: {distance:.2f}")
+            print(f"  Collision: No")  # Since has_collision is False
 
-        # Aggiorna la lista delle componenti connesse dopo l'aggiunta dell'arco
+        # Update the list of connected components after adding the edge
         components = list(nx.connected_components(G))
 
-    # Dopo il tentativo di connettere le componenti, verifica la connettività finale del grafo
+    # After attempting to connect components, check the final connectivity of the graph
     if nx.is_connected(G):
-        print("Il grafo è stato connesso.")
+        print("The graph has been connected.")
     else:
-        print("Il grafo non è completamente connesso. Alcune componenti rimangono separate.")
+        print("The graph is not fully connected. Some components remain separate.")
 
-    # Restituisce la lista degli archi aggiunti
+    # Return the list of added edges
     return edges_added
 
 
 def draw_graph(img_color, nodes, edges, map_info, h):
     """
-    Disegna gli archi del grafo sull'immagine colorata.
+    Draws the edges of the graph on the colored image.
 
-    Parametri:
-        img_color (numpy.ndarray): Immagine della mappa in formato BGR (colorata).
-        nodes (list): Lista di nodi come tuple (label, x, y).
-        edges (list): Lista di archi come dizionari {"source": ..., "target": ..., "distance": ...}.
-        map_info (dict): Dizionario contenente le informazioni della mappa.
-        h (int): Altezza dell'immagine in pixel.
+    Parameters:
+        img_color (numpy.ndarray): Colored map image in BGR format.
+        nodes (list): List of nodes as tuples (label, x, y).
+        edges (list): List of edges as dictionaries {"source": ..., "target": ..., "distance": ...}.
+        map_info (dict): Dictionary containing map information.
+        h (int): Image height in pixels.
     """
-    # Itera su ogni arco nella lista degli archi
+    # Iterate over each edge in the edge list
     for edge in edges:
-        label_i = edge["source"]  # Etichetta del nodo di partenza
-        label_j = edge["target"]  # Etichetta del nodo di arrivo
+        label_i = edge["source"]  # Source node label
+        label_j = edge["target"]  # Target node label
 
-        # Trova i dati dei nodi corrispondenti agli label
+        # Find the corresponding node data for the labels
         node_i = next(nd for nd in nodes if nd[0] == label_i)
         node_j = next(nd for nd in nodes if nd[0] == label_j)
 
-        # Converte le coordinate mondo in pixel per entrambi i nodi
+        # Convert world coordinates to pixel coordinates for both nodes
         r1, c1 = world_to_map(node_i[1], node_i[2], map_info, h)
         r2, c2 = world_to_map(node_j[1], node_j[2], map_info, h)
 
-        # Disegna una linea rossa tra i due nodi sull'immagine colorata
-        # Parametri della funzione cv2.line:
-        # - img_color: l'immagine su cui disegnare
-        # - (c1, r1): coordinate del primo punto (colonna, riga)
-        # - (c2, r2): coordinate del secondo punto (colonna, riga)
-        # - (0, 0, 255): colore rosso in formato BGR
-        # - 1: spessore della linea
+        # Draw a red line between the two nodes on the colored image
+        # Parameters for cv2.line:
+        # - img_color: the image to draw on
+        # - (c1, r1): coordinates of the first point (column, row)
+        # - (c2, r2): coordinates of the second point (column, row)
+        # - (0, 0, 255): red color in BGR format
+        # - 1: thickness of the line
         cv2.line(img_color, (c1, r1), (c2, r2), (0, 0, 255), 1)
 
 
 def draw_nodes_and_labels(img_color, nodes, map_info, h):
     """
-    Disegna i nodi e le loro etichette sull'immagine colorata.
+    Draws the nodes and their labels on the colored image.
 
-    Parametri:
-        img_color (numpy.ndarray): Immagine della mappa in formato BGR (colorata).
-        nodes (list): Lista di nodi come tuple (label, x, y).
-        map_info (dict): Dizionario contenente le informazioni della mappa.
-        h (int): Altezza dell'immagine in pixel.
+    Parameters:
+        img_color (numpy.ndarray): Colored map image in BGR format.
+        nodes (list): List of nodes as tuples (label, x, y).
+        map_info (dict): Dictionary containing map information.
+        h (int): Image height in pixels.
     """
-    # Itera su ogni nodo nella lista dei nodi
+    # Iterate over each node in the node list
     for node in nodes:
-        label, x, y = node  # Estrae etichetta e coordinate del nodo
+        label, x, y = node  # Extract node label and coordinates
 
-        # Converte le coordinate mondo in pixel
+        # Convert world coordinates to pixel coordinates
         r, c = world_to_map(x, y, map_info, h)
 
-        # Disegna un cerchio verde al punto (c, r) sull'immagine colorata
-        # Parametri della funzione cv2.circle:
-        # - img_color: l'immagine su cui disegnare
-        # - (c, r): coordinate del centro del cerchio (colonna, riga)
-        # - radius=5: raggio del cerchio in pixel
-        # - color=(0, 255, 0): colore verde in formato BGR
-        # - thickness=-1: riempimento del cerchio
+        # Draw a green circle at the point (c, r) on the colored image
+        # Parameters for cv2.circle:
+        # - img_color: the image to draw on
+        # - (c, r): coordinates of the circle center (column, row)
+        # - radius=5: radius of the circle in pixels
+        # - color=(0, 255, 0): green color in BGR format
+        # - thickness=-1: filled circle
         cv2.circle(img_color, (c, r), radius=5, color=(0, 255, 0), thickness=-1)
 
-        # Aggiunge l'etichetta del nodo vicino al cerchio
-        # Imposta le proprietà del testo
-        font = cv2.FONT_HERSHEY_SIMPLEX  # Tipo di font
-        font_scale = 0.4                  # Scala del font
-        font_thickness = 1                # Spessore del testo
+        # Add the node label next to the circle
+        # Set text properties
+        font = cv2.FONT_HERSHEY_SIMPLEX  # Font type
+        font_scale = 0.4                  # Font scale
+        font_thickness = 1                # Text thickness
 
-        # Calcola la dimensione del testo per posizionarlo correttamente
+        # Calculate the size of the text to position it correctly
         text_size, _ = cv2.getTextSize(label, font, font_scale, font_thickness)
 
-        # Calcola le coordinate del testo con un piccolo offset per evitare sovrapposizioni
-        text_x = c + 6  # Offset orizzontale
-        text_y = r - 6  # Offset verticale
+        # Calculate text coordinates with a small offset to avoid overlap
+        text_x = c + 6  # Horizontal offset
+        text_y = r - 6  # Vertical offset
 
-        # Scrive l'etichetta sul'immagine
-        # Parametri della funzione cv2.putText:
-        # - img_color: l'immagine su cui disegnare
-        # - label: testo da disegnare
-        # - (text_x, text_y): coordinate del punto di inizio del testo
-        # - font: tipo di font
-        # - font_scale: scala del font
-        # - (255, 0, 0): colore blu in formato BGR
-        # - font_thickness: spessore del testo
-        # - cv2.LINE_AA: tipo di linea (antialiased)
+        # Put the label text on the image
+        # Parameters for cv2.putText:
+        # - img_color: the image to draw on
+        # - label: text to draw
+        # - (text_x, text_y): starting point of the text
+        # - font: font type
+        # - font_scale: font scale
+        # - (255, 0, 0): blue color in BGR format
+        # - font_thickness: text thickness
+        # - cv2.LINE_AA: line type (antialiased)
         cv2.putText(img_color, label, (text_x, text_y), font, font_scale, (255, 0, 0), font_thickness, cv2.LINE_AA)
 
 
 def save_graph_json(nodes, edges, output_json):
     """
-    Salva il grafo in un file JSON con una struttura specifica.
+    Saves the graph to a JSON file with a specific structure.
 
-    Struttura JSON:
+    JSON Structure:
     {
       "nodes": [
         {
@@ -647,115 +647,115 @@ def save_graph_json(nodes, edges, output_json):
       ]
     }
 
-    Parametri:
-        nodes (list): Lista di nodi come tuple (label, x, y).
-        edges (list): Lista di archi come dizionari {"source": ..., "target": ..., "distance": ...}.
-        output_json (str): Percorso al file JSON di output.
+    Parameters:
+        nodes (list): List of nodes as tuples (label, x, y).
+        edges (list): List of edges as dictionaries {"source": ..., "target": ..., "distance": ...}.
+        output_json (str): Path to the output JSON file.
     """
-    # Crea un dizionario per il grafo risultante
+    # Create a dictionary for the resulting graph
     result_graph = {
         "nodes": [
             {
-                "label": nd[0],  # Etichetta del nodo
-                "x": nd[1],      # Coordinata x nel mondo
-                "y": nd[2]       # Coordinata y nel mondo
+                "label": nd[0],  # Node label
+                "x": nd[1],      # x-coordinate in the world
+                "y": nd[2]       # y-coordinate in the world
             } for nd in nodes
         ],
         "edges": [
             {
-                "source": edge["source"],  # Nodo di partenza
-                "target": edge["target"],  # Nodo di arrivo
-                "distance": edge["distance"]  # Distanza tra i nodi
+                "source": edge["source"],  # Source node
+                "target": edge["target"],  # Target node
+                "distance": edge["distance"]  # Distance between nodes
             } for edge in edges
         ]
     }
 
-    # Apre il file JSON di output in modalità scrittura
+    # Open the output JSON file in write mode
     with open(output_json, 'w') as f:
-        json.dump(result_graph, f, indent=2)  # Scrive il dizionario in formato JSON con indentazione
+        json.dump(result_graph, f, indent=2)  # Write the dictionary to JSON with indentation
 
-    # Stampa un messaggio di conferma
-    print(f"Grafo costruito correttamente e salvato in {output_json}.")
+    # Print a confirmation message
+    print(f"Graph successfully built and saved in {output_json}.")
 
 
 def save_graph_image(img_color, output_image):
     """
-    Salva l'immagine con il grafo disegnato.
+    Saves the image with the drawn graph.
 
-    Parametri:
-        img_color (numpy.ndarray): Immagine della mappa con il grafo disegnato (in formato BGR).
-        output_image (str): Percorso al file immagine di output.
+    Parameters:
+        img_color (numpy.ndarray): Map image with the graph drawn on it (in BGR format).
+        output_image (str): Path to the output image file.
     """
-    # Salva l'immagine usando OpenCV
+    # Save the image using OpenCV
     cv2.imwrite(output_image, img_color)
 
-    # Stampa un messaggio di conferma
-    print(f"Immagine con il grafo disegnato salvata in {output_image}.")
+    # Print a confirmation message
+    print(f"Image with the drawn graph saved in {output_image}.")
 
 
 ###############################################################################
-# Funzione principale
+# Main Function
 ###############################################################################
 
 def main():
     """
-    Funzione principale che coordina tutte le operazioni per costruire il grafo
-    di navigazione, gestire le collisioni, connettere componenti disconnesse e
-    salvare i risultati in file JSON e immagine.
+    Main function that coordinates all operations to build the navigation graph,
+    handle collisions, connect disconnected components, and save the results
+    in JSON files and images.
     """
-    # Crea un parser per gestire gli argomenti da riga di comando
+    # Create a parser to handle command-line arguments
     parser = argparse.ArgumentParser(
-        description="Costruisce un grafo di navigazione con tolleranza alle collisioni e salva l'immagine con il grafo disegnato."
+        description="Builds a navigation graph with collision tolerance and saves the image with the drawn graph."
     )
 
-    # Aggiunge gli argomenti necessari al parser
+    # Add necessary arguments to the parser
     parser.add_argument("--map_yaml", type=str, required=True,
-                        help="Percorso al file .yaml della mappa (Occupancy Grid).")
+                        help="Path to the .yaml map file (Occupancy Grid).")
     parser.add_argument("--graph_json", type=str, required=True,
-                        help="Percorso al file .json contenente i nodi (waypoints).")
+                        help="Path to the .json file containing nodes (waypoints).")
     parser.add_argument("--k", type=int, default=6,
-                        help="Numero di vicini da considerare per ogni nodo (K-NN). Deve essere >= max_edges_per_node.")
+                        help="Number of neighbors to consider for each node (K-NN). Must be >= max_edges_per_node.")
     parser.add_argument("--max_edges_per_node", type=int, default=4,
-                        help="Numero massimo di archi da mantenere per ogni nodo dopo il controllo collisioni.")
+                        help="Maximum number of edges to retain per node after collision checks.")
     parser.add_argument("--output_json", type=str, default="output_graph.json",
-                        help="Nome del file JSON di output con il grafo completo.")
+                        help="Name of the output JSON file with the complete graph.")
     parser.add_argument("--output_image", type=str, default="graph_on_map.png",
-                        help="Nome del file immagine di output con il grafo disegnato.")
+                        help="Name of the output image file with the drawn graph.")
 
-    # Soglia per considerare un pixel libero (es. >=110 se 111=bianco)
+    # Threshold to consider a pixel free (e.g., >=110 if 111=white)
     parser.add_argument("--free_value_thresh", type=float, default=110.0,
-                        help="Valore di soglia per considerare un pixel libero. Esempio: 110 (se 111=bianco).")
+                        help="Threshold value to consider a pixel free. Example: 110 (if 111=white).")
 
-    # Tolleranza collisione: es. 0.8 => se l'80% dei pixel è libero, niente collisione
+    # Collision tolerance: e.g., 0.8 => if 80% of the pixels are free, no collision
     parser.add_argument("--collision_tolerance", type=float, default=1.0,
-                        help="Percentuale [0..1] di pixel liberi richiesta per considerare un segmento sgombro (no collision).")
+                        help="Percentage [0..1] of free pixels required to consider a segment clear (no collision).")
 
-    # Nuovo parametro: distanza massima consentita tra due nodi per connetterli
+    # New parameter: maximum allowed distance between two nodes to connect them
     parser.add_argument("--max_distance", type=float, required=True,
-                        help="Distanza euclidea massima ammessa tra due nodi per connetterli tramite un arco.")
+                        help="Maximum allowed Euclidean distance between two nodes to connect them via an edge.")
 
-    # Parsing degli argomenti forniti dall'utente
+    # Parse the arguments provided by the user
     args = parser.parse_args()
 
-    # Verifica che il numero di vicini 'k' sia almeno pari a 'max_edges_per_node'
+    # Ensure that the number of neighbors 'k' is at least equal to 'max_edges_per_node'
     if args.k < args.max_edges_per_node:
-        print(f"Errore: il parametro --k ({args.k}) deve essere >= --max_edges_per_node ({args.max_edges_per_node}).")
-        return  # Esce dalla funzione principale
+        print(f"Error: the --k parameter ({args.k}) must be >= --max_edges_per_node ({args.max_edges_per_node}).")
+        return  # Exit the main function
 
-    # 1) Carica le informazioni della mappa dal file YAML
+    # 1) Load the map information from the YAML file
     map_info = load_map_info(args.map_yaml)
 
-    # 2) Carica l'immagine della mappa in scala di grigi
+    # 2) Load the grayscale map image
     img, h, w = load_occupancy_image(map_info)
 
-    # Converti l'immagine in formato BGR per permettere disegni a colori
+    # Convert the image to BGR format to allow colored drawings
     img_color = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
 
-    # 3) Carica i nodi (waypoints) dal file JSON
+    # 3) Load the nodes (waypoints) from the JSON file
     nodes = load_nodes(args.graph_json)
-    # nodes è una lista di tuple: [(label, x, y), ...]
+    # nodes is a list of tuples: [(label, x, y), ...]
 
-    # 4) Costruisci il grafo iniziale basato su K-NN, collisioni e distanza
+    # 4) Build the initial graph based on K-NN, collisions, and distance
     initial_edges = build_initial_graph(
         nodes=nodes,
         map_info=map_info,
@@ -765,18 +765,18 @@ def main():
         max_edges_per_node=args.max_edges_per_node,
         free_value_thresh=args.free_value_thresh,
         collision_tolerance=args.collision_tolerance,
-        max_distance=args.max_distance  # Passa il parametro della distanza massima
+        max_distance=args.max_distance  # Pass the maximum distance parameter
     )
 
-    # 5) Disegna gli archi iniziali sull'immagine colorata
+    # 5) Draw the initial edges on the colored image
     draw_graph(img_color, nodes, initial_edges, map_info, h)
 
-    # 6) Crea un grafo NetworkX non orientato
-    G = nx.Graph()  # Inizializza un grafo non orientato
-    G.add_nodes_from([node[0] for node in nodes])  # Aggiunge tutti i nodi al grafo
-    G.add_edges_from([(edge["source"], edge["target"]) for edge in initial_edges])  # Aggiunge gli archi iniziali
+    # 6) Create an undirected NetworkX graph
+    G = nx.Graph()  # Initialize an undirected graph
+    G.add_nodes_from([node[0] for node in nodes])  # Add all nodes to the graph
+    G.add_edges_from([(edge["source"], edge["target"]) for edge in initial_edges])  # Add initial edges
 
-    # 7) Verifica e connette eventuali componenti disconnesse nel grafo
+    # 7) Check and connect any disconnected components in the graph
     edges_added = connect_disconnected_components(
         G=G,
         nodes=nodes,
@@ -785,70 +785,70 @@ def main():
         h=h,
         collision_tolerance=args.collision_tolerance,
         free_value_thresh=args.free_value_thresh,
-        max_distance=args.max_distance,          # Passa il parametro della distanza massima
-        max_edges_per_node=args.max_edges_per_node  # Passa il parametro del limite degli archi
+        max_distance=args.max_distance,          # Pass the maximum distance parameter
+        max_edges_per_node=args.max_edges_per_node  # Pass the edge limit parameter
     )
 
-    # 8) Disegna gli archi aggiunti sulla mappa colorata
+    # 8) Draw the added edges on the colored map
     for edge in edges_added:
-        source, target, distance = edge["source"], edge["target"], edge["distance"]  # Estrae i dati dell'arco
-        node_source = next(nd for nd in nodes if nd[0] == source)  # Trova il nodo di partenza
-        node_target = next(nd for nd in nodes if nd[0] == target)  # Trova il nodo di arrivo
+        source, target, distance = edge["source"], edge["target"], edge["distance"]  # Extract edge data
+        node_source = next(nd for nd in nodes if nd[0] == source)  # Find the source node
+        node_target = next(nd for nd in nodes if nd[0] == target)  # Find the target node
 
-        # Converte le coordinate mondo in pixel per entrambi i nodi
+        # Convert world coordinates to pixel coordinates for both nodes
         r1, c1 = world_to_map(node_source[1], node_source[2], map_info, h)
         r2, c2 = world_to_map(node_target[1], node_target[2], map_info, h)
 
-        # Disegna una linea rossa tra i nodi aggiunti
-        cv2.line(img_color, (c1, r1), (c2, r2), (0, 0, 255), 1)  # Colore rosso (BGR: 0,0,255)
+        # Draw a red line between the added nodes
+        cv2.line(img_color, (c1, r1), (c2, r2), (0, 0, 255), 1)  # Red color (BGR: 0,0,255)
 
-    # 9) Disegna i nodi e le etichette sull'immagine colorata
+    # 9) Draw the nodes and their labels on the colored image
     draw_nodes_and_labels(img_color, nodes, map_info, h)
 
-    # 10) Prepara la lista finale di archi combinando archi iniziali e aggiunti
+    # 10) Prepare the final edge list by combining initial and added edges
     final_edges = initial_edges + edges_added
 
-    # -- Rimuoviamo eventuali duplicati: (source, target) e (target, source) devono essere lo stesso arco --
-    unique_edges_set = set()      # Insieme per tracciare gli archi unici
-    unique_edges_list = []        # Lista finale senza duplicati
+    # -- Remove any duplicates: (source, target) and (target, source) should be the same edge --
+    unique_edges_set = set()      # Set to track unique edges
+    unique_edges_list = []        # Final list without duplicates
 
     for e in final_edges:
-        s = e["source"]            # Nodo di partenza
-        t = e["target"]            # Nodo di arrivo
-        d = e["distance"]          # Distanza tra i nodi
+        s = e["source"]            # Source node
+        t = e["target"]            # Target node
+        d = e["distance"]          # Distance between nodes
 
-        # Normalizza l'ordine delle etichette per garantire unicità (min, max)
+        # Normalize the order of labels to ensure uniqueness (min, max)
         if s > t:
-            s, t = t, s  # Scambia s e t se necessario
+            s, t = t, s  # Swap s and t if necessary
 
-        # Crea una tupla per identificare l'arco univocamente
+        # Create a tuple to uniquely identify the edge
         edge_tuple = (s, t, d)
 
-        # Se l'arco non è già presente nell'insieme, aggiungilo
+        # If the edge is not already in the set, add it
         if edge_tuple not in unique_edges_set:
-            unique_edges_set.add(edge_tuple)  # Aggiunge la tupla all'insieme
+            unique_edges_set.add(edge_tuple)  # Add the tuple to the set
 
-            # Crea un dizionario rappresentante l'arco senza duplicati
+            # Create a dictionary representing the unique edge
             edge_dict = {
-                "source": s,       # Nodo di partenza
-                "target": t,       # Nodo di arrivo
-                "distance": d      # Distanza tra i nodi
+                "source": s,       # Source node
+                "target": t,       # Target node
+                "distance": d      # Distance between nodes
             }
-            unique_edges_list.append(edge_dict)  # Aggiunge il dizionario alla lista finale
+            unique_edges_list.append(edge_dict)  # Add the dictionary to the final list
 
-    # Assegna la lista senza duplicati a final_edges
+    # Assign the unique edge list to final_edges
     final_edges = unique_edges_list
 
-    # 11) Salva il grafo finale in un file JSON
+    # 11) Save the final graph to a JSON file
     save_graph_json(nodes, final_edges, args.output_json)
 
-    # 12) Salva l'immagine con il grafo disegnato
+    # 12) Save the image with the drawn graph
     save_graph_image(img_color, args.output_image)
 
 
 ###############################################################################
-# Entry point
+# Entry Point
 ###############################################################################
 
 if __name__ == "__main__":
-    main()  # Esegue la funzione principale quando lo script viene eseguito direttamente
+    main()  # Execute the main function when the script is run directly
