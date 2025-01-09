@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-
 from launch import LaunchDescription
 from launch_ros.actions import Node
 import launch.actions
@@ -11,10 +10,9 @@ def generate_launch_description():
         # Dichiarazione dei parametri di lancio
         launch.actions.DeclareLaunchArgument(
             'robot_namespace',
-            default_value='turtlebot1',
-            description='Namespace del robot'
+            default_value='',  # Impostato a stringa vuota per rendere opzionale
+            description='Namespace del robot (può essere vuoto)'
         ),
-
         # Definizione del nodo slave_navigation_node
         Node(
             package='fleet_turtlebot4_navigation',
@@ -24,6 +22,10 @@ def generate_launch_description():
             output='screen',
             arguments=[
                 '--robot_namespace', launch.substitutions.LaunchConfiguration('robot_namespace'),
+            ],
+            parameters=[
+                {'robot_namespace': launch.substitutions.LaunchConfiguration('robot_namespace')}
             ]
         )
     ])
+

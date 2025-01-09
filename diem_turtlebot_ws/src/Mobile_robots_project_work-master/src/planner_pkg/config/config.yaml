@@ -1,0 +1,90 @@
+map:
+  nodes:
+    A:
+      coordinates: [58.4, -2]
+    B:
+      coordinates: [57.9, -11.5]
+    C:
+      coordinates: [38.1, -0.878]
+    D:
+      coordinates: [37.5, -10.6]
+    E:
+      coordinates: [17.4, -0.322]
+    F:
+      coordinates: [17.2, -9.81]
+    G:
+      coordinates: [-2.85, -0.05]
+    H:
+      coordinates: [-3.21, -9.49]
+    I:
+      coordinates: [-23.5, 0.522]
+    J:
+      coordinates: [-23.9, -8.85]
+ 
+  connections:
+    A:
+      - point: B
+        direction: east
+      - point: C
+        direction: south
+    B:
+      - point: A
+        direction: west
+      - point: D
+        direction: south
+    C:
+      - point: A
+        direction: north
+      - point: D
+        direction: east
+      - point: E
+        direction: south
+    D:
+      - point: B
+        direction: north
+      - point: C
+        direction: west
+      - point: F
+        direction: south
+    E:
+      - point: C
+        direction: north
+      - point: F
+        direction: east
+      - point: G
+        direction: south
+    F:
+      - point: D
+        direction: north
+      - point: E
+        direction: west
+      - point: H
+        direction: south
+    G:
+      - point: E
+        direction: north
+      - point: H
+        direction: east
+      - point: I
+        direction: south
+    H:
+      - point: F
+        direction: north
+      - point: G
+        direction: west
+      - point: J
+        direction: south
+    I:
+      - point: G
+        direction: north
+      - point: J
+        direction: east
+    J:
+      - point: H
+        direction: north
+      - point: I
+        direction: west
+planner_parameters:
+  timer_period: 0.1
+  timeout: 10.0
+  rho: 3.0
