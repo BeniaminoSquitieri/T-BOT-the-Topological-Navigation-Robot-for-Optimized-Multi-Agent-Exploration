@@ -174,11 +174,11 @@ class WaypointManager:
                 )
                 slave.waiting = True
                 return
-            else:
+            # else:
                 # If the edge is already occupied by the current slave, proceed with assignment
-                self.node.get_logger().info(
-                    f"Edge {edge_key} is already occupied by '{slave_ns}'. Proceeding with assignment."
-                )
+                # self.node.get_logger().info(
+                #     f"Edge {edge_key} is already occupied by '{slave_ns}'. Proceeding with assignment."
+                # )
     
         # If the edge is not occupied, proceed to assign it to the slave
         if edge_key not in self.node.occupied_edges:

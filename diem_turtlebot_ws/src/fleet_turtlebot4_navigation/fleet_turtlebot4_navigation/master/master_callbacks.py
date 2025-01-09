@@ -8,49 +8,49 @@ from .path_calculation import calculate_undirected_cpp_route
 class MasterCallbacks:
     """
     Callback methods for the Master node.
-    
-    This class encapsulates the essential functionalities required by a master node in a 
+
+    This class encapsulates the essential functionalities required by a master node in a
     distributed robot fleet system. It handles tasks such as publishing the navigation graph,
     computing global routes, registering new slaves, processing navigation status updates from
     slaves, and managing timeouts for inactive slaves.
-    
-    By separating these callbacks into their own class, the code promotes modularity and 
-    reusability, allowing different master node implementations to inherit and utilize 
+
+    By separating these callbacks into their own class, the code promotes modularity and
+    reusability, allowing different master node implementations to inherit and utilize
     these core functionalities.
     """
-    
+
     def __init__(self):
         """
         Initializes the MasterCallbacks class.
-        
-        Sets up initial attributes required for managing the global CPP (Closed Path Planning) 
+
+        Sets up initial attributes required for managing the global CPP (Closed Path Planning)
         route. This route is shared across all slave nodes to coordinate their navigation tasks.
         """
         self.global_cpp_route = []  # Will hold the common Eulerian path for navigation
         self.first_waypoint_phase = True
         self.slaves_reached_first = set()
-    
+
     def publish_navigation_graph(self):
         """
         Publishes the navigation graph to a ROS2 topic.
-        
-        This method serializes the current navigation graph (`self.full_graph`) into a JSON 
-        format and publishes it on a designated ROS2 topic (`self.graph_publisher`). The 
-        graph includes nodes with their spatial coordinates and edges with their associated 
+
+        This method serializes the current navigation graph (`self.full_graph`) into a JSON
+        format and publishes it on a designated ROS2 topic (`self.graph_publisher`). The
+        graph includes nodes with their spatial coordinates and edges with their associated
         traversal distances.
-        
-        The 'weight' attribute of each edge is used to represent traversal time, calculated 
+
+        The 'weight' attribute of each edge is used to represent traversal time, calculated
         as distance divided by a constant speed factor (0.31 units/sec).
         """
         # Initialize a String message for the graph
         graph_msg = String()
-        
+
         # Prepare the graph data in JSON-serializable format
         graph_data = {
             'nodes': [],
             'edges': []
         }
-        
+
         # Iterate over all nodes in the full graph and add their details to graph_data
         for node, data in self.full_graph.nodes(data=True):
             graph_data['nodes'].append({
@@ -60,7 +60,7 @@ class MasterCallbacks:
                 # Orientation can be added if needed
                 # 'orientation': data.get('orientation', 0.0)
             })
-        
+
         # Iterate over all edges in the full graph and add their details to graph_data
         for u, v, data in self.full_graph.edges(data=True):
             if u < v:  # Avoid duplicates in an undirected graph
@@ -73,25 +73,25 @@ class MasterCallbacks:
 
         # Serialize the graph data to JSON and assign to the message
         graph_msg.data = json.dumps(graph_data)
-        
+
         # Publish the serialized graph message
         self.graph_publisher.publish(graph_msg)
-        
+
         # Log the publishing action at the DEBUG level
         self.get_logger().debug("Navigation graph published.")
 
     def compute_global_cpp_route(self):
         """
         Computes the global Closed Path Planning (CPP) route on the navigation graph.
-        
+
         This method generates a list of waypoints (`self.global_cpp_route`) representing an Eulerian
         circuit that traverses each edge exactly once. It utilizes the `calculate_undirected_cpp_route`
         function to compute this route based on the nodes and the navigation graph.
-        
+
         If a valid Eulerian circuit is found, it logs the computed route. Otherwise, it logs an error.
         """
         waypoints = []
-        
+
         # Extract waypoint information from each node in the graph
         for node, data in self.full_graph.nodes(data=True):
             waypoint = {
@@ -106,21 +106,21 @@ class MasterCallbacks:
 
         # Assign the computed route to the class attribute
         self.global_cpp_route = route_nodes
-        
+
         # Log the outcome of the route computation
         if self.global_cpp_route:
             self.get_logger().info(f"Global CPP route computed: {self.global_cpp_route}")
         else:
             self.get_logger().error("Global CPP route is empty or Euler circuit not found.")
-    
+
     def slave_registration_callback(self, msg):
         """
         Callback that handles the registration of a new slave robot.
-        
+
         When a new slave robot publishes its namespace to the `/slave_registration` topic,
         this callback is invoked to register the slave within the master's tracking system.
         It performs the following actions:
-        
+
         1. Parses the slave's namespace from the incoming message.
         2. Checks if the slave is already registered.
            - If not registered:
@@ -131,13 +131,13 @@ class MasterCallbacks:
              e. Initiates waypoint repartitioning and assignment.
            - If already registered:
              a. Updates the slave's last seen time to prevent timeout.
-        
+
         Parameters:
         - msg (std_msgs.msg.String): The incoming message containing the slave's namespace.
         """
         # Extract the slave's namespace from the message, removing any surrounding whitespace
         slave_ns = msg.data.strip()
-        
+
         # Get the current time in seconds (from ROS2 clock)
         current_time = self.get_clock().now().nanoseconds / 1e9
 
@@ -145,11 +145,11 @@ class MasterCallbacks:
         if slave_ns not in self.slaves:
             # Create a ROS2 publisher for sending navigation commands to this slave
             publisher = self.create_publisher(String, f"/{slave_ns}/navigation_commands", 10)
-            
+
             # Initialize a new SlaveState instance to track the slave's status and communication
             slave_state = SlaveState(slave_ns, publisher)
             slave_state.last_seen_time = current_time  # Record the registration time
-            
+
             # Add the new slave to the master's slave tracking dictionary
             self.slaves[slave_ns] = slave_state
 
@@ -171,15 +171,15 @@ class MasterCallbacks:
     def navigation_status_callback(self, msg):
         """
         Processes navigation status updates received from slaves.
-        
+
         Slaves publish their navigation status on the `/navigation_status` topic. This callback
         handles these updates, performing actions based on the reported status, such as:
-        
+
         - Marking slaves as ready.
         - Tracking traversal of edges.
         - Handling errors reported by slaves.
         - Assigning the next waypoint to slaves upon successful navigation.
-        
+
         Parameters:
         - msg (std_msgs.msg.String): The incoming message containing the slave's navigation status in JSON format.
         """
@@ -206,7 +206,7 @@ class MasterCallbacks:
         # Check if the slave is registered; if not, optionally handle or ignore
         if slave_ns not in self.slaves:
             # Optionally, handle unregistered slaves, such as auto-registering them
-            self.get_logger().warn(f"Received status from unknown slave '{slave_ns}'. Ignoring message.")
+            # self.get_logger().warn(f"Received status from unknown slave '{slave_ns}'. Ignoring message.")
             return
 
         # Retrieve the SlaveState instance for the reporting slave
@@ -235,11 +235,11 @@ class MasterCallbacks:
         elif status == "reached":
             # Log the successful arrival of the slave at a waypoint
             self.get_logger().info(
-                f"Slave '{slave_ns}' reached waypoint '{current_wpt}'. traversed_edge={traversed}"
+                f"Slave '{slave_ns}' reached waypoint '{current_wpt}'"
             )
             if edge_key:
                 # Log the traversed edge
-                self.get_logger().info(f"Traversed edge: {edge_key}")
+                # self.get_logger().info(f"Traversed edge: {edge_key}")
                 self.get_logger().info(
                     f"Current occupied edges before freeing: {self.occupied_edges}"
                 )
@@ -296,11 +296,11 @@ class MasterCallbacks:
     def on_first_waypoint_reached(self, msg: String):
         """
         Callback to handle notifications from slaves when they reach their first waypoint.
-        
+
         This method tracks which slaves have reported reaching their first waypoint. Once all active
         slaves have reported, it proceeds with assigning subsequent waypoints and stops listening for
         further first waypoint notifications.
-        
+
         Parameters:
             msg (std_msgs.msg.String): The incoming message containing data in JSON format with the key 'robot_namespace'.
         """

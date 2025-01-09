@@ -46,7 +46,7 @@ class SimulatedSlaveNavigationNode(Node, MasterCallbacks):
         self.is_master = False
         self.master_alive = True
         self.last_master_heartbeat = time.time()
-        self.heartbeat_timeout = 10.0
+        self.heartbeat_timeout = 100.0
         
         # Parametro di timeout (per controllo slave)
         self.declare_parameter('timeout', 5.0)
@@ -331,7 +331,7 @@ class SimulatedSlaveNavigationNode(Node, MasterCallbacks):
         cx = self.navigation_graph.nodes[self.current_node]['x']
         cy = self.navigation_graph.nodes[self.current_node]['y']
         dist = math.hypot(x - cx, y - cy)
-        speed = 10.31
+        speed = 1.31
         ttime = dist / speed
         
         trav_edge = [self.current_node, label]

@@ -2,7 +2,7 @@
 
 import cv2
 import numpy as np
-from scipy.ndimage import distance_transform_edt, convolve, generic_filter
+from scipy.ndimage import distance_transform_edt
 from skimage.morphology import skeletonize
 import logging
 from PIL import Image
@@ -112,6 +112,12 @@ def compute_distance_map(binary_map):
         numpy.ndarray: The Euclidean distance map.
     """
     # Compute the Euclidean distance transform
+    # This function calculates the distance transform of the input, by replacing each foreground (non-zero) element,
+    # with its shortest distance to the background (any zero-valued element).
+    # In addition to the distance transform, the feature transform can be calculated. 
+    # In this case the index of the closest background element to each foreground element is returned in a separate array. 
+    # For more information refer to: scipy.ndimage.distance_transform_edt documentation
+
     distance_map = distance_transform_edt(binary_map)
     logging.debug("Computed Euclidean distance map.")
     return distance_map
