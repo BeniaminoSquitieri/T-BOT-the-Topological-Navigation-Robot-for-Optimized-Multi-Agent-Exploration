@@ -1,25 +1,27 @@
+# waypoint_manager.py
+
 import json
-import networkx as nx
 from std_msgs.msg import String
+import networkx as nx
 
 from .path_calculation import calculate_undirected_cpp_route
-
+from .slave_state import SlaveState
 
 class WaypointManager:
     """
-    Manages waypoint assignments to slaves, ensuring no conflicts in edge usage.
-    
+    Manages waypoint assignments to slave robots, ensuring no conflicts in edge usage.
+
     The `WaypointManager` is responsible for assigning navigation waypoints to slave robots,
     ensuring that no two slaves are assigned to traverse the same edge simultaneously. It handles
     initial waypoint assignments, subsequent waypoint assignments, and manages slaves that are
-    waiting due to edge occupancy conflicts. Additionally, it can distribute slaves along the
+    waiting due to edge occupancy conflicts. Additionally, it distributes slaves along the
     global Closed Postman Problem (CPP) route with uniform offsets to ensure efficient coverage.
-    
+
     Attributes:
         node (MasterNavigationNode):
             A reference to the `MasterNavigationNode` instance, providing access to the master node's
             attributes and methods, such as logging, graph data, and slave tracking.
-        
+
         assigned_nodes (set):
             A set that keeps track of nodes that have already been assigned to slaves to prevent
             duplicate assignments. (Note: In the current implementation, this set is initialized
@@ -39,82 +41,78 @@ class WaypointManager:
         self.assigned_nodes = set()  # Tracks nodes that have been assigned to slaves to prevent duplication
     
     # ===================================================
-    # Initial Waypoint Assignment
+    # Assigning Offsets Along the Global CPP Route
     # ===================================================
     
-    def assign_initial_waypoint(self, slave_ns: str):
+    def assign_offsets_along_route(self):
         """
-        Assigns the first waypoint to a newly registered slave.
-        
-        This method is invoked when a new slave robot registers with the master node. It assigns
-        the first waypoint from the slave's assigned waypoints list, ensuring that the edge between
-        the slave's current node and the first waypoint is not already occupied by another slave.
-        If the desired edge is occupied, the slave is marked as waiting until the edge becomes available.
+        Assigns offsets to all active slaves based on the total number of waypoints and active slaves.
+
+        This method recalculates the distribution of waypoints among all active slaves to ensure that
+        each slave is evenly spaced along the global CPP route. It assigns unique starting points (offsets)
+        to each slave and resets their waypoint assignments accordingly.
+
+        Steps:
+          1. Determines the number of active slaves and the total number of waypoints.
+          2. Calculates an offset for each slave to distribute them evenly along the route.
+          3. Assigns the entire global CPP route to each slave, starting from their respective offsets.
+          4. Publishes the first waypoint to each slave without checking edge occupancy.
+        """
+        # self.node.get_logger().info("==== assign_offsets_along_route() START ====")
+
+        # Check if a global CPP route exists
+        if not self.node.global_cpp_route:
+            self.node.get_logger().warn("No global CPP route available.")
+            return
+
+        active_slaves = list(self.node.slaves.values())
+        num_slaves = len(active_slaves)
+        if num_slaves == 0:
+            self.node.get_logger().warn("No active slaves to assign waypoints.")
+            return
+
+        route_length = len(self.node.global_cpp_route)
+
+        # Calculate the offset index for each slave to distribute them evenly along the route
+        for i, slave in enumerate(active_slaves):
+            offset_index = int(round(i * (route_length / num_slaves))) % route_length
+            slave.assigned_waypoints = self.node.global_cpp_route.copy()
+            slave.current_waypoint_index = offset_index
+            # Assign only the first waypoint without checking edge occupancy
+            self.assign_first_waypoint_to_slave(slave)
+
+        self.node.partitioning_done = True
+        # self.node.get_logger().info("==== assign_offsets_along_route() END ====")
+    
+    def assign_first_waypoint_to_slave(self, slave):
+        """
+        Assigns the first waypoint to a slave without checking edge occupancy.
         
         Parameters:
-            slave_ns (str):
-                The unique namespace identifier of the slave robot to which the initial waypoint is to be assigned.
+            slave (SlaveState):
+                The `SlaveState` instance representing the slave to assign the first waypoint to.
         """
-        # Log the current state of occupied edges and their occupants before assignment
-        self.node.get_logger().info(f"==== OCCUPIED EDGES BEFORE ASSIGNING FIRST WAYPOINT ====")
-        self.node.get_logger().info(f"Occupied edges: {self.node.occupied_edges}")
-        self.node.get_logger().info(f"Edge occupants: {self.node.edge_occupants}")
-        self.node.get_logger().info(f"========================================================")
-    
-        # Directly call assign_next_waypoint to handle the actual assignment
-        self.assign_next_waypoint(slave_ns)
-        # Retrieve the SlaveState instance for the specified slave
-        slave = self.node.slaves[slave_ns]
-    
-        # Check if there are any waypoints assigned to the slave
-        if not slave.assigned_waypoints:
-            self.node.get_logger().warn(f"No waypoints to assign to slave {slave_ns}.")
+        idx = slave.current_waypoint_index
+        route = slave.assigned_waypoints
+        if idx < 0 or idx >= len(route):
+            self.node.get_logger().error(f"Invalid offset index {idx} for slave {slave.slave_ns}.")
             return
-    
-        # Determine the next waypoint label based on the current waypoint index
-        waypoint_label = slave.assigned_waypoints[slave.current_waypoint_index]
-        # Retrieve the slave's current node (location)
-        from_node = slave.current_node
-        # The next node to assign as a waypoint
-        to_node = waypoint_label
-    
-        # Create the edge key as a sorted tuple to maintain consistency in edge representation
-        edge_key = tuple(sorted([from_node, to_node]))
-    
-        # Check if the desired edge is already occupied by another slave
-        if edge_key in self.node.occupied_edges:
-            # If the edge is occupied, log a warning and mark the slave as waiting
-            self.node.get_logger().warn(
-                f"Edge {edge_key} is occupied. {slave_ns} must wait for initial waypoint."
-            )
-            slave.waiting = True
-            return
-        else:
-            # If the edge is free, occupy it by adding it to the occupied_edges set
-            self.node.occupied_edges.add(edge_key)
-            # Update the slave's current_edge attribute to reflect the occupied edge
-            slave.current_edge = edge_key
-    
-        # Create and publish the waypoint message to the slave
-        data = self.node.full_graph.nodes[to_node]
+
+        next_label = route[idx]
+        data = self.node.full_graph.nodes[next_label]
         waypoint_msg = {
-            'label': to_node,
+            'label': next_label,
             'x': data['x'],
-            'y': data['y'],
+            'y': data['y']
         }
         msg = String()
         msg.data = json.dumps(waypoint_msg)
         slave.publisher.publish(msg)
-    
-        # Log the successful assignment of the initial waypoint
         self.node.get_logger().info(
-            f"Assigned initial waypoint '{to_node}' to slave '{slave_ns}'. "
-            f"Waypoint data: {waypoint_msg}"
+            f"Assigned first waypoint '{next_label}' to slave '{slave.slave_ns}' (offset_idx={idx})."
         )
-    
-        # Update the slave's current_waypoint_index to point to the next waypoint in the list
-        slave.current_waypoint_index = (slave.current_waypoint_index + 1) % len(slave.assigned_waypoints)
-    
+        # Do not set `has_first_waypoint_assigned` yet; it will be set when the slave reaches the waypoint
+
     # ===================================================
     # Next Waypoint Assignment
     # ===================================================
@@ -129,60 +127,54 @@ class WaypointManager:
         
         Parameters:
             slave_ns (str):
-                The unique namespace identifier of the slave robot to which the next waypoint is to be assigned.
+                The unique namespace identifier of the slave robot to assign the next waypoint to.
         """
         # Retrieve the SlaveState instance for the specified slave
         slave = self.node.slaves[slave_ns]
-    
+
         # Check if the slave has any waypoints assigned
         if not slave.assigned_waypoints:
             self.node.get_logger().warn(f"No waypoints assigned to slave {slave_ns}.")
             return
-    
+
         # If the slave has traversed all assigned waypoints, optionally restart the route
         if slave.current_waypoint_index >= len(slave.assigned_waypoints):
-            self.node.get_logger().info(f"All waypoints assigned to {slave_ns} have been traversed. Restarting route.")
+            self.node.get_logger().info(f"All assigned waypoints for {slave_ns} have been traversed. Restarting route.")
             slave.current_waypoint_index = 0
-    
-        # Determine the next node to assign as a waypoint
+
+        # Determine the next waypoint to assign
         next_node = slave.assigned_waypoints[slave.current_waypoint_index]
-        # Retrieve the slave's current node (location)
         from_node = slave.current_node
-    
-        # If the next waypoint is the same as the current node, skip assignment to avoid redundancy
+
+        # Prevent assigning a waypoint that is the same as the current node (self-edge)
         if next_node == from_node:
             self.node.get_logger().warn(
-                f"Slave '{slave_ns}' next_node == current_node ({next_node}); skipping to next index."
+                f"Slave '{slave_ns}' next_node ({next_node}) is the same as current_node; skipping to next waypoint."
             )
-            # Increment the waypoint index to move to the next waypoint
-            slave.current_waypoint_index += 1
-            # Recursively call assign_next_waypoint to assign the subsequent waypoint
+            # Increment the waypoint index to skip the current (invalid) waypoint
+            slave.current_waypoint_index = (slave.current_waypoint_index + 1) % len(slave.assigned_waypoints)
+            # Recursively call assign_next_waypoint to assign the next valid waypoint
             self.assign_next_waypoint(slave_ns)
             return
-    
-        # Create the edge key as a sorted tuple to maintain consistency
+
+        # Create an ordered tuple for the edge to maintain consistency
         edge_key = tuple(sorted([from_node, next_node]))
-    
+
         # Check if the desired edge is already occupied by another slave
         if edge_key in self.node.occupied_edges:
-            # Retrieve the occupant of the edge
             occupant = self.node.edge_occupants.get(edge_key, "Unknown")
             if occupant != slave_ns:
-                # If the edge is occupied by a different slave, log a warning and mark the current slave as waiting
+                # If the edge is occupied by a different slave, mark this slave as waiting
                 self.node.get_logger().warn(
-                    f"Edge {edge_key} is occupied by '{occupant}'. {slave_ns} must wait."
+                    f"Edge {edge_key} is occupied by '{occupant}'. Slave '{slave_ns}' must wait."
                 )
                 slave.waiting = True
                 return
-            # else:
-                # If the edge is already occupied by the current slave, proceed with assignment
-                # self.node.get_logger().info(
-                #     f"Edge {edge_key} is already occupied by '{slave_ns}'. Proceeding with assignment."
-                # )
-    
+            # If the edge is occupied by the same slave, proceed with assignment
+
         # If the edge is not occupied, proceed to assign it to the slave
         if edge_key not in self.node.occupied_edges:
-            # Occupy the edge by adding it to the occupied_edges set
+            # Occupy the edge by adding it to the set of occupied edges
             self.node.occupied_edges.add(edge_key)
             # Map the edge to the occupying slave
             self.node.edge_occupants[edge_key] = slave_ns
@@ -190,7 +182,7 @@ class WaypointManager:
             slave.current_edge = edge_key
             # Mark the slave as not waiting
             slave.waiting = False
-    
+
         # Create and publish the waypoint message to the slave
         data = self.node.full_graph.nodes[next_node]
         waypoint_msg = {
@@ -201,16 +193,16 @@ class WaypointManager:
         msg = String()
         msg.data = json.dumps(waypoint_msg)
         slave.publisher.publish(msg)
-    
+
         # Log the successful assignment of the next waypoint
         self.node.get_logger().info(
             f"Assigned next waypoint '{next_node}' to slave '{slave_ns}'. "
-            f"Edge {edge_key} is now occupied by {slave_ns}."
+            f"Edge {edge_key} is now occupied by '{slave_ns}'."
         )
-    
-        # Increment the slave's current_waypoint_index to point to the next waypoint
+
+        # Increment the waypoint index for the next assignment
         slave.current_waypoint_index += 1
-    
+
     # ===================================================
     # Assigning Waypoints to Waiting Slaves
     # ===================================================
@@ -223,31 +215,28 @@ class WaypointManager:
         for a waypoint assignment due to edge occupancy conflicts. For each waiting slave, it attempts
         to assign the next waypoint if the required edge becomes available.
         """
-        # Iterate through all slaves in a sorted order based on their namespaces
+        # Iterate through all slaves in alphabetical order based on their namespaces
         for slave_ns in sorted(self.node.slaves.keys()):
             # Retrieve the SlaveState instance for the current slave
             slave = self.node.slaves[slave_ns]
             # Skip slaves that are not waiting
             if not slave.waiting:
                 continue
-    
+
             # Check if the slave has any waypoints assigned
             if not slave.assigned_waypoints:
                 self.node.get_logger().warn(f"No waypoints assigned to slave {slave_ns}.")
                 continue
-    
-            # Determine the next waypoint label based on the current waypoint index
-            waypoint_label = slave.assigned_waypoints[slave.current_waypoint_index]
-            # Retrieve the slave's current node (location)
+
+            # Determine the next waypoint based on the current waypoint index
+            next_node = slave.assigned_waypoints[slave.current_waypoint_index]
             from_node = slave.current_node
-            # The next node to assign as a waypoint
-            to_node = waypoint_label
-            # Create the edge key as a sorted tuple to maintain consistency
-            edge_key = tuple(sorted([from_node, to_node]))
-    
+            # Create an ordered tuple for the edge
+            edge_key = tuple(sorted([from_node, next_node]))
+
             # Check if the desired edge has been freed (no longer occupied)
             if edge_key not in self.node.occupied_edges:
-                # Occupy the edge by adding it to the occupied_edges set
+                # Occupy the edge by adding it to the set of occupied edges
                 self.node.occupied_edges.add(edge_key)
                 # Map the edge to the occupying slave
                 self.node.edge_occupants[edge_key] = slave_ns
@@ -255,106 +244,33 @@ class WaypointManager:
                 slave.current_edge = edge_key
                 # Mark the slave as not waiting
                 slave.waiting = False
-    
+
                 # Create and publish the waypoint message to the slave
-                data = self.node.full_graph.nodes[to_node]
+                data = self.node.full_graph.nodes[next_node]
                 waypoint_msg = {
-                    'label': to_node,
+                    'label': next_node,
                     'x': data['x'],
                     'y': data['y'],
                 }
                 msg = String()
                 msg.data = json.dumps(waypoint_msg)
                 slave.publisher.publish(msg)
-    
+
                 # Log the successful assignment of the waiting waypoint
                 self.node.get_logger().info(
-                    f"Assigned waiting waypoint '{to_node}' to slave '{slave_ns}'. "
-                    f"Waypoint data: {waypoint_msg}"
+                    f"Assigned waiting waypoint '{next_node}' to slave '{slave_ns}'. "
+                    f"Edge {edge_key} is now occupied by '{slave_ns}'."
                 )
-    
-                # Update the slave's current_node to the newly assigned waypoint
-                slave.current_node = to_node
-                # Increment the slave's current_waypoint_index to point to the next waypoint
+
+                # Update the slave's current node to the newly assigned waypoint
+                slave.current_node = next_node
+                # Increment the waypoint index for the next assignment
                 slave.current_waypoint_index += 1
             else:
                 # If the edge is still occupied, log a warning and leave the slave in the waiting state
                 self.node.get_logger().warn(
-                    f"Edge {edge_key} is still occupied. {slave_ns} remains waiting."
+                    f"Edge {edge_key} is still occupied. Slave '{slave_ns}' remains waiting."
                 )
-    
-    # ===================================================
-    # Assigning Offsets Along the Global CPP Route
-    # ===================================================
-        
-    def assign_offsets_along_route(self):
-        self.node.get_logger().info("==== assign_offsets_along_route() START ====")
-
-        if not self.node.global_cpp_route:
-            self.node.get_logger().warn("Nessun global CPP route.")
-            return
-
-        active_slaves = list(self.node.slaves.values())
-        k = len(active_slaves)
-        if k == 0:
-            self.node.get_logger().warn("Nessuno slave attivo.")
-            return
-
-        route_length = len(self.node.global_cpp_route)
-
-        # 1) Metto la variabile waiting_for_first_waypoints = True
-        self.node.waiting_for_first_waypoints = True
-        self.node.slaves_that_reported_first_wp.clear()
-
-        # 2) Creo la sottoscrizione se non l’ho già
-        if self.node.first_wp_reached_sub is None:
-            self.node.first_wp_reached_sub = self.node.create_subscription(
-                String,
-                '/first_waypoint_reached',
-                self.node.on_first_waypoint_reached,  # callback definito nel Master
-                10
-            )
-
-        # 3) Assegno SOLO il primo waypoint a ciascuno slave
-        for i, slave in enumerate(active_slaves):
-            offset_index = int(round(i * (route_length / k))) % route_length
-            # Carico TUTTO il percorso se vuoi, ma invio fisicamente soltanto il primo:
-            slave.assigned_waypoints = self.node.global_cpp_route.copy()
-            slave.current_waypoint_index = offset_index
-            # Niente assegnazione multipla qui: mando un singolo waypoint “first”.
-
-            # Esempio di funzione ad hoc:
-            self.assign_first_waypoint_to_slave(slave)
-
-        self.node.partitioning_done = True
-        self.node.get_logger().info("==== assign_offsets_along_route() END ====")
-
-    def assign_first_waypoint_to_slave(self, slave):
-        """
-        Assegna il primo waypoint a uno slave.
-        """
-        idx = slave.current_waypoint_index
-        route = slave.assigned_waypoints
-        if idx < 0 or idx >= len(route):
-            self.get_logger().error(f"Indice offset non valido per slave {slave.slave_ns}.")
-            return
-
-        next_label = route[idx]
-        data = self.full_graph.nodes[next_label]
-        waypoint_msg = {
-            'label': next_label,
-            'x': data['x'],
-            'y': data['y']
-        }
-        msg = String()
-        msg.data = json.dumps(waypoint_msg)
-        slave.publisher.publish(msg)
-        self.get_logger().info(
-            f"Assegnato primo waypoint '{next_label}' a slave '{slave.slave_ns}' (offset_idx={idx})."
-        )
-
-
-
 
     # ===================================================
     # Repartitioning and Assigning Waypoints
@@ -362,142 +278,11 @@ class WaypointManager:
     
     def repartition_and_assign_waypoints(self):
         """
-        Assigns offsets to robots based on the total number of waypoints and active robots.
+        Repartitions and assigns waypoints to all active slaves.
         
-        This method recalculates the distribution of waypoints among active slaves to ensure that
-        all robots are efficiently covering the navigation graph without overlapping tasks. It takes
-        into account the total number of waypoints in the global CPP route and the number of active
-        slaves to determine appropriate offsets.
-        
-        The method performs the following steps:
-          1. Determines the number of active slaves and the total number of waypoints.
-          2. Clears the current tracking of occupied edges to reset the state.
-          3. Calculates an offset based on the number of slaves and the length of the route.
-          4. Assigns each slave an offset route and the corresponding starting waypoint.
-          5. Assigns the next waypoint to each slave by invoking `assign_next_waypoint`.
+        This method recalculates the distribution of waypoints among all active slaves, assigning
+        unique offsets to each slave to ensure even distribution along the global CPP route. It
+        effectively redistributes waypoints whenever a new slave is added or an existing slave is removed.
         """
-        # Determine the number of active slaves
-        num_slaves = len(self.node.slaves)
-        # If there are no active slaves, log a warning and exit
-        if num_slaves == 0:
-            self.node.get_logger().warn("No slaves to assign waypoints.")
-            return
-    
-        # Determine the total number of waypoints in the global CPP route
-        total_waypoints = len(self.node.global_cpp_route)
-        # If the global CPP route is empty, log a warning and exit
-        if total_waypoints == 0:
-            self.node.get_logger().warn("Global CPP route is empty.")
-            return
-    
-        # # Log that the occupied edges are being cleared before repartitioning
-        # self.node.get_logger().info("Clearing occupied_edges before repartition/offset assignment...")
-        # # Clear the set of occupied edges
-        # self.node.occupied_edges.clear()
-        # # Clear the dictionary mapping edges to their occupants
-        # self.node.edge_occupants.clear()
-    
-        # Calculate the offset based on the number of slaves and the total waypoints
-        offset = total_waypoints // num_slaves
-        # Iterate through each slave to assign an offset route
-        for idx, (slave_ns, slave) in enumerate(self.node.slaves.items()):
-            # Determine the starting index for the current slave based on its position in the list
-            start_index = (idx * offset) % total_waypoints
-            # Assign the entire global CPP route to the slave, starting at the calculated offset
-            assigned_route = self.node.global_cpp_route[start_index:] + self.node.global_cpp_route[:start_index]
-            # Update the slave's assigned_waypoints with the newly calculated route
-            slave.assigned_waypoints = assigned_route
-            # Reset the slave's current_waypoint_index to start at the beginning of the assigned route
-            slave.current_waypoint_index = 0
-    
-            # Set the slave's current_node to the first node in the assigned route
-            first_node = assigned_route[0]
-            slave.current_node = first_node
-    
-            # Log detailed information about the assigned offset for debugging and monitoring
-            self.node.get_logger().info(
-                f"Assigned offset={offset} route to slave '{slave_ns}'. Starting at index={start_index} "
-                f"first_node={first_node}"
-            )
-    
-            # Assign the next waypoint to the slave by invoking the assign_next_waypoint method
-            self.assign_next_waypoint(slave_ns)
-    
-    # ===================================================
-    # Extracting Waypoints from a Subgraph (Deprecated)
-    # ===================================================
-    
-    def extract_waypoints_from_subgraph(self, subgraph: nx.Graph) -> list:
-        """
-        Extracts waypoints from a subgraph.
-        
-        **Note**: This method is currently not utilized in the offset-based strategy but is retained
-        for potential future use or alternative waypoint assignment strategies.
-        
-        Parameters:
-            subgraph (networkx.Graph):
-                The subgraph from which to extract waypoints. Each node in the subgraph should have
-                attributes like 'label', 'x', and 'y' representing its identifier and spatial coordinates.
-        
-        Returns:
-            list:
-                A list of waypoints, where each waypoint is a dictionary containing 'label', 'x', and 'y'.
-                Example:
-                    [
-                        {'label': 'node_1', 'x': 1.0, 'y': 2.0},
-                        {'label': 'node_2', 'x': 3.0, 'y': 4.0},
-                        # ... more waypoints ...
-                    ]
-        """
-        waypoints = []
-        # Iterate through all nodes in the subgraph
-        for node, data in subgraph.nodes(data=True):
-            # Create a waypoint dictionary with the node's label and coordinates
-            waypoint = {
-                'label': node,
-                'x': data['x'],
-                'y': data['y'],
-            }
-            # Append the waypoint to the waypoints list
-            waypoints.append(waypoint)
-        # Return the list of extracted waypoints
-        return waypoints
-    
-    # ===================================================
-    # Debugging: Printing Subgraphs
-    # ===================================================
-    
-    def print_subgraphs(self, subgraphs: list):
-        """
-        Logs details of each subgraph for debugging purposes.
-        
-        **Note**: This method is currently not essential in the offset-based strategy but can be useful
-        for debugging graph partitioning and waypoint assignments in alternative strategies.
-        
-        Parameters:
-            subgraphs (list of networkx.Graph):
-                A list of subgraphs, where each subgraph represents a partition of the main navigation graph.
-                Each subgraph should contain nodes with attributes like 'label', 'x', and 'y', and edges
-                with attributes such as 'distance'.
-        """
-        # Log the start of subgraph details
-        self.node.get_logger().info("----- Subgraphs After Partition -----")
-        # Iterate through each subgraph with its index
-        for idx, subg in enumerate(subgraphs):
-            # Log the subgraph number
-            self.node.get_logger().info(f"Subgraph {idx+1}:")
-            # Log the number of nodes in the subgraph
-            self.node.get_logger().info(f"  Nodes ({len(subg.nodes())}):")
-            # Iterate through all nodes in the subgraph and log their details
-            for n, d in subg.nodes(data=True):
-                self.node.get_logger().info(f"    {n} -> (x={d.get('x')}, y={d.get('y')})")
-            # Log the number of edges in the subgraph
-            self.node.get_logger().info(f"  Edges ({len(subg.edges())}):")
-            # Iterate through all edges in the subgraph and log their details
-            for u, v, ed in subg.edges(data=True):
-                self.node.get_logger().info(
-                    f"    {u}-{v}, distance={ed.get('distance')}"
-                )
-        # Log the end of subgraph details
-        self.node.get_logger().info("----- End of Subgraphs -----")
-
+        # self.node.get_logger().info("Repartitioning and assigning waypoints in progress...")
+        self.assign_offsets_along_route()

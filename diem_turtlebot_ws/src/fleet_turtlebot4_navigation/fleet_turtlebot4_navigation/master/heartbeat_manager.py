@@ -15,28 +15,24 @@ class HeartbeatManager:
     periodic heartbeat messages to inform other nodes (slaves) of its active status.
     """
     
-    def __init__(self, node, heartbeat_topic: str = '/master_heartbeat', rate: float = 10):
+    def __init__(self, node, qos_profile, heartbeat_topic: str = '/master_heartbeat'):
         """
         Initializes the HeartbeatManager.
         
         Parameters:
         - node (rclpy.node.Node): The ROS2 node instance that will utilize this HeartbeatManager.
+        - qos_profile (QoSProfile): The QoSProfile to be used for publishing heartbeat messages.
         - heartbeat_topic (str): The ROS2 topic name where heartbeat messages will be published.
           Defaults to '/master_heartbeat'.
         - rate (float): The frequency (in Hz) at which heartbeat messages are published.
-          Defaults to 1.0 Hz (once per second).
+          Defaults to 10.0 Hz.
         """
         self.node = node  # Reference to the ROS2 node
         self.heartbeat_topic = heartbeat_topic
-        self.rate = rate
-        self.heartbeat_publisher = self.node.create_publisher(String, self.heartbeat_topic, 1)
+        self.qos_profile = qos_profile  # Use the shared QoSProfile
+        self.heartbeat_publisher = self.node.create_publisher(String, self.heartbeat_topic, self.qos_profile)
         self.heartbeat_timer = None  # Timer will be initialized in start_publishing()
         
-        # Log initialization at the INFO level.
-        self.node.get_logger().info(
-            f"[HeartbeatManager] Initialized with topic '{self.heartbeat_topic}' at {self.rate} Hz."
-        )
-    
     def start_publishing(self):
         """
         Starts the heartbeat publishing by creating a timer.
@@ -44,8 +40,7 @@ class HeartbeatManager:
         This method should be called when the node assumes the Master role.
         """
         if self.heartbeat_timer is None:
-            self.heartbeat_timer = self.node.create_timer(1.0 / self.rate, self.publish_heartbeat)
-            self.node.get_logger().info(f"[HeartbeatManager] Started publishing heartbeats at {self.rate} Hz.")
+            self.heartbeat_timer = self.node.create_timer(1.0 , self.publish_heartbeat)
         else:
             self.node.get_logger().warn("[HeartbeatManager] Heartbeat publishing is already active.")
     

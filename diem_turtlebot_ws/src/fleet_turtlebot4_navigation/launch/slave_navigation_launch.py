@@ -1,31 +1,42 @@
 #!/usr/bin/env python3
-from launch import LaunchDescription
-from launch_ros.actions import Node
-import launch.actions
-import launch.substitutions
 
+from launch import LaunchDescription
+from launch.actions import DeclareLaunchArgument
+from launch.substitutions import LaunchConfiguration
+from launch_ros.actions import Node
 
 def generate_launch_description():
+    """
+    Generates a launch description that starts the RealRobotNavigationNode
+    (or whichever node you like) with arguments for both robot_namespace and graph_path.
+    """
     return LaunchDescription([
-        # Dichiarazione dei parametri di lancio
-        launch.actions.DeclareLaunchArgument(
+        # Launch argument for the robot namespace
+        DeclareLaunchArgument(
             'robot_namespace',
-            default_value='',  # Impostato a stringa vuota per rendere opzionale
-            description='Namespace del robot (può essere vuoto)'
+            default_value='robot1',
+            description='Namespace for the robot. e.g. "robot1", "robot2", etc.'
         ),
-        # Definizione del nodo slave_navigation_node
+        
+        # Launch argument for the path to the navigation graph
+        DeclareLaunchArgument(
+            'graph_path',
+            default_value='/home/beniamino/turtlebot4/diem_turtlebot_ws/src/fleet_turtlebot4_navigation/map_transformation_phase/result_graph_original.json',
+            description='Path to the navigation graph JSON file.'
+        ),
+
+        # Definition of the Node to launch
         Node(
             package='fleet_turtlebot4_navigation',
-            executable='slave_navigation_node',  # Deve corrispondere all'entry point nel setup.py
-            name='slave_navigation_node',  # Nome del nodo ROS corrispondente al nome nel script Python
-            namespace=launch.substitutions.LaunchConfiguration('robot_namespace'),
+            executable='slave_navigation_node',  # match your setup.py entry point
+            name='slave_navigation_node',         # how you want it to appear in ROS
+            namespace=LaunchConfiguration('robot_namespace'),
             output='screen',
+
+            # Pass the command-line arguments to the node
             arguments=[
-                '--robot_namespace', launch.substitutions.LaunchConfiguration('robot_namespace'),
-            ],
-            parameters=[
-                {'robot_namespace': launch.substitutions.LaunchConfiguration('robot_namespace')}
+                '--robot_namespace', LaunchConfiguration('robot_namespace'),
+                '--graph_path', LaunchConfiguration('graph_path')
             ]
         )
     ])
-

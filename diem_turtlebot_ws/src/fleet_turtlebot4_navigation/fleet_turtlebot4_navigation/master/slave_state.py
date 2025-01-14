@@ -1,3 +1,7 @@
+# slave_state.py
+
+from std_msgs.msg import String
+
 class SlaveState:
     """
     Represents the state and communication details of a slave robot in the fleet.
