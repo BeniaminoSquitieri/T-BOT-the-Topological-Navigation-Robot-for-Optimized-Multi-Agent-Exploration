@@ -1,0 +1,72 @@
+{
+    "nodes": [
+      {
+        "label": "node_A",
+        "x": 0,
+        "y": 0
+      },
+      {
+        "label": "node_B",
+        "x": 5,
+        "y": 0
+      },
+      {
+        "label": "node_C",
+        "x": 5,
+        "y": 5
+      },
+      {
+        "label": "node_D",
+        "x": 0,
+        "y": 5
+      },
+      {
+        "label": "node_E",
+        "x": 2.5,
+        "y": 2.5
+      }
+    ],
+    "edges": [
+      {
+        "source": "node_A",
+        "target": "node_B",
+        "distance": 5.0
+      },
+      {
+        "source": "node_B",
+        "target": "node_C",
+        "distance": 5.0
+      },
+      {
+        "source": "node_C",
+        "target": "node_D",
+        "distance": 5.0
+      },
+      {
+        "source": "node_D",
+        "target": "node_A",
+        "distance": 5.0
+      },
+      {
+        "source": "node_A",
+        "target": "node_E",
+        "distance": 3.5
+      },
+      {
+        "source": "node_B",
+        "target": "node_E",
+        "distance": 3.5
+      },
+      {
+        "source": "node_C",
+        "target": "node_E",
+        "distance": 3.5
+      },
+      {
+        "source": "node_D",
+        "target": "node_E",
+        "distance": 3.5
+      }
+    ]
+  }
+  

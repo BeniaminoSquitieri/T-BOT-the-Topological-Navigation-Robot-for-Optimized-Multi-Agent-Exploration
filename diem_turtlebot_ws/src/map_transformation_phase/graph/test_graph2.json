@@ -1,0 +1,52 @@
+{
+    "nodes": [
+      {
+        "label": "node_X",
+        "x": 0,
+        "y": 0
+      },
+      {
+        "label": "node_Y",
+        "x": 3,
+        "y": 0
+      },
+      {
+        "label": "node_Z",
+        "x": 3,
+        "y": 4
+      },
+      {
+        "label": "node_W",
+        "x": 0,
+        "y": 4
+      }
+    ],
+    "edges": [
+      {
+        "source": "node_X",
+        "target": "node_Y",
+        "distance": 2.5
+      },
+      {
+        "source": "node_Y",
+        "target": "node_Z",
+        "distance": 3.0
+      },
+      {
+        "source": "node_Z",
+        "target": "node_W",
+        "distance": 4.5
+      },
+      {
+        "source": "node_W",
+        "target": "node_X",
+        "distance": 5.0
+      },
+      {
+        "source": "node_X",
+        "target": "node_Z",
+        "distance": 6.0
+      }
+    ]
+  }
+  

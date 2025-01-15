@@ -59,7 +59,7 @@ class SimulatedSlaveNavigationNode(Node, MasterCallbacks):
         self.is_master = False
         self.master_alive = True
         self.last_master_heartbeat = time.time()
-        self.heartbeat_timeout = 10.0
+        self.heartbeat_timeout = 1000.0
         
         # Declare a parameter 'timeout' (default: 5.0) for controlling slave inactivity
         self.declare_parameter('timeout', 5.0)

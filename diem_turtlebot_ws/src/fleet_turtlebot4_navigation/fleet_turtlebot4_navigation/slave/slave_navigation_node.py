@@ -61,7 +61,7 @@ class RealRobotNavigationNode(Node, MasterCallbacks):
         self.is_master = False
         self.master_alive = True
         self.last_master_heartbeat = time.time()
-        self.heartbeat_timeout = 10.0
+        self.heartbeat_timeout = 1000.0
 
         # Declare and read some parameters
         self.declare_parameter('timeout', 5.0)
@@ -370,13 +370,14 @@ class RealRobotNavigationNode(Node, MasterCallbacks):
     
     def navigate_to_waypoint(self, waypoint):
         """
-        Replaces 'simulate_navigation' with actual TurtleBot4 navigation calls.
+        Replaces 'simulate_navigation' with actual TurtleBot4 navigation calls,
+        using the startToPose(...) and getResult() approach (synchronous-like).
         """
         label = waypoint["label"]
         x = waypoint["x"]
         y = waypoint["y"]
 
-        # If we have never set a current_node, we 'teleport' to the label
+        # If we have never set a current_node, "teleport" to the first destination.
         if self.current_node is None:
             self.current_node = label
             self.publish_status("reached", "", 0.0, label, [label, label])
@@ -385,13 +386,13 @@ class RealRobotNavigationNode(Node, MasterCallbacks):
             self.is_navigating = False
             return
 
-        # If we're already there
+        # If we are already at the destination
         if self.current_node == label:
             self.get_logger().info(f"[{self.robot_namespace}] Already at '{label}'.")
             self.is_navigating = False
             return
 
-        # If the node doesn't exist in the graph, error out
+        # If the node doesn't exist in the graph, report an error
         if (self.current_node not in self.navigation_graph.nodes) or (label not in self.navigation_graph.nodes):
             err_msg = f"Current node='{self.current_node}' or destination='{label}' not in the graph."
             self.get_logger().error(f"[{self.robot_namespace}] {err_msg}")
@@ -399,10 +400,7 @@ class RealRobotNavigationNode(Node, MasterCallbacks):
             self.is_navigating = False
             return
 
-        # We'll try to navigate physically using TurtleBot4Navigator
-        # 1. Build a Pose
-        #   The turtlebot4_navigator likely has a getPoseStamped interface
-        #   Provide [x, y] plus a default orientation of 0.0 for heading
+        # Build the pose (x, y, orientation=0.0)
         goal_pose = self.navigator.getPoseStamped([x, y], 0.0)
 
         start_time = time.time()
@@ -411,8 +409,8 @@ class RealRobotNavigationNode(Node, MasterCallbacks):
             f"[{self.robot_namespace}] Navigating from '{self.current_node}' to '{label}'..."
         )
 
-        # Make sure the action server is ready
         try:
+            # (Optional) Check if the action server is ready.
             if not self.navigator.nav_to_pose_client.wait_for_server(timeout_sec=5.0):
                 err_message = f"Action server not available to navigate to '{label}'."
                 self.get_logger().error(f"[{self.robot_namespace}] {err_message}")
@@ -420,32 +418,27 @@ class RealRobotNavigationNode(Node, MasterCallbacks):
                 self.is_navigating = False
                 return
 
-            # Send the goal
-            nav_future = self.navigator.startToPose(goal_pose)
-            rclpy.spin_until_future_complete(self, nav_future)
-            nav_result = nav_future.result()  # e.g. TaskResult.SUCCEEDED, etc.
+            # Start blocking navigation
+            self.navigator.startToPose(goal_pose)
 
+            # Once navigation completes, measure the total time
             time_taken = time.time() - start_time
-            if nav_result is None:
-                error_message = f"No result from navigation to '{label}'."
-                self.get_logger().error(f"[{self.robot_namespace}] {error_message}")
-                self.publish_status("error", error_message, time_taken, label, [self.current_node, label])
-                self.is_navigating = False
-                return
+
+            # Retrieve the final navigation result (TaskResult.SUCCEEDED, etc.)
+            nav_result = self.navigator.getResult()
 
             if nav_result == TaskResult.SUCCEEDED:
-                # SUCCESS
+                # Success
                 self.get_logger().info(
                     f"[{self.robot_namespace}] Reached '{label}' in {time_taken:.2f}s."
                 )
                 self.current_node = label
                 self.publish_status("reached", "", time_taken, label, [self.current_node, label])
                 
-                # If it's the first waypoint we truly reached, publish once
                 if not self.first_wp_notification_sent:
                     self.publish_first_waypoint_notification()
             else:
-                # Some failure code
+                # Some failure code (ABORTED, CANCELLED, etc.)
                 error_message = f"Navigation to '{label}' failed with code {nav_result}."
                 self.get_logger().error(f"[{self.robot_namespace}] {error_message}")
                 self.publish_status("error", error_message, time_taken, label, [self.current_node, label])
@@ -455,14 +448,18 @@ class RealRobotNavigationNode(Node, MasterCallbacks):
             self.get_logger().error(f"[{self.robot_namespace}] {error_message}")
             self.publish_status("error", error_message, 0.0, label, [self.current_node, label])
 
-        # Done with this waypoint
+        # Finished processing this waypoint
         self.is_navigating = False
-        # If there are more waypoints queued, keep going
-        with self.navigation_lock:
-            if len(self.assigned_waypoints) > 0:
-                next_wp = self.assigned_waypoints.pop(0)
-                self.is_navigating = True
-                self.navigate_to_waypoint(next_wp)
+        
+        # # If there are more queued waypoints, continue
+        # with self.navigation_lock:
+        #     if len(self.assigned_waypoints) > 0:
+        #         next_wp = self.assigned_waypoints.pop(0)
+        #         self.is_navigating = True
+        #         self.navigate_to_waypoint(next_wp)
+
+
+
 
     def publish_first_waypoint_notification(self):
         """

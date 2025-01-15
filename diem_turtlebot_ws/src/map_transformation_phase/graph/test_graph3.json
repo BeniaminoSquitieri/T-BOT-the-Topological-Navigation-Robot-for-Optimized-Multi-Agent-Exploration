@@ -1,0 +1,32 @@
+{
+    "nodes": [
+      {"label": "node_1", "x": 0, "y": 0},
+      {"label": "node_2", "x": 2, "y": 3},
+      {"label": "node_3", "x": 4, "y": 0},
+      {"label": "node_4", "x": 6, "y": 3},
+      {"label": "node_5", "x": 8, "y": 0},
+      {"label": "node_6", "x": 10, "y": 3},
+      {"label": "node_7", "x": 12, "y": 0},
+      {"label": "node_8", "x": 14, "y": 3},
+      {"label": "node_9", "x": 16, "y": 0},
+      {"label": "node_10", "x": 18, "y": 3}
+    ],
+    "edges": [
+      {"source": "node_1", "target": "node_2", "distance": 3.6},
+      {"source": "node_2", "target": "node_3", "distance": 3.6},
+      {"source": "node_3", "target": "node_4", "distance": 3.6},
+      {"source": "node_4", "target": "node_5", "distance": 3.6},
+      {"source": "node_5", "target": "node_6", "distance": 3.6},
+      {"source": "node_6", "target": "node_7", "distance": 3.6},
+      {"source": "node_7", "target": "node_8", "distance": 3.6},
+      {"source": "node_8", "target": "node_9", "distance": 3.6},
+      {"source": "node_9", "target": "node_10", "distance": 3.6},
+      {"source": "node_10", "target": "node_1", "distance": 15.0},
+      {"source": "node_1", "target": "node_5", "distance": 8.0},
+      {"source": "node_2", "target": "node_6", "distance": 8.0},
+      {"source": "node_3", "target": "node_7", "distance": 8.0},
+      {"source": "node_4", "target": "node_8", "distance": 8.0},
+      {"source": "node_5", "target": "node_9", "distance": 8.0}
+    ]
+  }
+  
