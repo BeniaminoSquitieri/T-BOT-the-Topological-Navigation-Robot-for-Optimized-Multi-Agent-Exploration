@@ -3,7 +3,7 @@
   <name>fleet_turtlebot4_navigation</name>
   <version>0.0.1</version>
   <description>Fleet Turtlebot4 Navigation Package</description>
-  <maintainer email="bennibeniamino@gmail.com">beniamino</maintainer>
+  <maintainer email="b.squitieri@studenti.unisa.it">Beniamino</maintainer>
   <license>Apache-2.0</license>
 
   <!-- Build tool dependencies -->

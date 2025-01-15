@@ -8,7 +8,7 @@ def generate_launch_description():
     graph_path_arg = DeclareLaunchArgument(
         'graph_path',
         # default_value='/home/beniamino/turtlebot4/diem_turtlebot_ws/src/fleet_turtlebot4_navigation/map_transformation_phase/result_graph_reduced.json',
-        default_value='/home/beniamino/turtlebot4/diem_turtlebot_ws/src/fleet_turtlebot4_navigation/map_transformation_phase/result_graph_original.json',
+        default_value='/home/beniamino/turtlebot4/diem_turtlebot_ws/src/map_transformation_phase/result_graph_original.json',
         description='Path to the navigation graph JSON file'
     )
 
