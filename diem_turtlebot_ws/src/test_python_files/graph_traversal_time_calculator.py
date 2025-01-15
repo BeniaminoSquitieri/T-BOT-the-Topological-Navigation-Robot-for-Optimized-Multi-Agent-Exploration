@@ -1,7 +1,6 @@
 import json
 import sys
 import networkx as nx
-from itertools import combinations
 import time
 from collections import deque
 

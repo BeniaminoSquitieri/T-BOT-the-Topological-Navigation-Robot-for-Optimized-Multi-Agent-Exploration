@@ -5,7 +5,6 @@ from rclpy.node import Node
 from std_msgs.msg import String
 import json
 import time
-import random
 from threading import Lock, Event
 from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy
 
