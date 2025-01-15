@@ -15,7 +15,7 @@ def generate_launch_description():
         # Argomento per il percorso del grafo
         DeclareLaunchArgument(
             'graph_path',
-            default_value='/home/beniamino/turtlebot4/diem_turtlebot_ws/src/map_transformation_phase/result_graph_original.json',
+            default_value='/home/beniamino/turtlebot4/diem_turtlebot_ws/src/map_transformation_phase/graph/result_graph_original.json',
             description='Percorso al file del grafo di navigazione in formato JSON'
         ),
         # Nodo del robot simulato
