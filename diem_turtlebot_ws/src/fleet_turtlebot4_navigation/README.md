@@ -81,19 +81,6 @@ The architecture facilitates dynamic task allocation, real-time state monitoring
 
 ---
 
-## **Installation**
-
-### **Dependencies**
-To use this package, ensure the following dependencies are installed:
-- **ROS2 Humble** (or newer).
-- `networkx` for graph-based task computation:
-  ```bash
-  pip install networkx
-  ```
-- TurtleBot4 navigation stack:
-  ```bash
-  sudo apt install ros-humble-turtlebot4-navigation
-  ```
 
 ### **Building the Package**
 1. Clone the repository into your ROS2 workspace:
@@ -115,11 +102,39 @@ To use this package, ensure the following dependencies are installed:
 
 ## **Usage**
 
+
+### **Launching Master node**
+```bash
+ros2 launch fleet_turtlebot4_navigation master_navigation_launch.py
+```
 ### **Launching Simulated Navigation**
 ```bash
 ros2 launch fleet_turtlebot4_navigation slave_navigation_simulator_launch.py robot_namespace:=robot1
 ```
 
+### Preliminary operations
+Before launching the master node and the real slave node, don't forget to connect the Turtlebot4(robot used in the thesis) with the map server and the nav2 stack.
+### Terminal 1 - Start Localization Using the Map
+
+```bash
+ros2 launch turtlebot4_navigation localization.launch.py map:=<map_yaml_file_path>
+```
+In my case(going into the directory where I have the map):
+
+```bash
+ros2 launch turtlebot4_navigation localization.launch.py map:=diem_map.yaml
+```
+
+### Terminal 2 - Start the Navigation Module
+```bash
+ros2 launch turtlebot4_navigation nav2.launch.py
+```
+### Terminal 3 - Start RVIZ to Visualize the Robot
+```bash
+ros2 launch turtlebot4_viz view_robot.launch.py
+```
+> **Note:** Replace `<map_yaml_file_path>` with the path to the generated YAML map.
+After that in the other terminals you can run the master slave architecture. 
 ### **Launching Real Navigation**
 ```bash
 ros2 launch fleet_turtlebot4_navigation slave_navigation_launch.py robot_namespace:=robot1
@@ -130,7 +145,7 @@ ros2 launch fleet_turtlebot4_navigation slave_navigation_launch.py robot_namespa
 ## **Configuration**
 
 ### **Graph File**
-The graph file defines waypoints and edges for task allocation. Place your custom graph file in the `config` directory and ensure the launch files reference it correctly.
+The graph file defines waypoints and edges for task allocation. Ensure the launch files reference to the correct directory where thy're located or alternately specify it through the apposite ros2 launch argument.
 
 #### Example `example_graph.json`:
 ```json

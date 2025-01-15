@@ -154,27 +154,3 @@ def partition_graph(full_graph: nx.MultiGraph, num_partitions: int):
         subgraphs_with_start.append((sg, starting_node))
     
     return subgraphs_with_start  # Return the list of subgraphs with their starting nodes
-
-
-def partition_graph_wrapper(full_graph: nx.MultiGraph, num_slaves: int, start_positions: list = None):
-    """
-    A wrapper function for partition_graph that ignores start_positions and returns
-    partitions suitable for assigning to each slave.
-
-    This function simplifies the partitioning process by not considering explicit
-    starting positions, instead delegating the task to partition_graph.
-
-    Parameters:
-    - full_graph (nx.MultiGraph): The complete navigation graph to be partitioned.
-    - num_slaves (int): The number of slave robots to partition the graph among.
-    - start_positions (list, optional): A list of starting positions for each slave.
-      This parameter is ignored in the current implementation.
-
-    Returns:
-    - List[Tuple[nx.MultiGraph, str]]: A list where each element is a tuple containing:
-        - A subgraph (nx.MultiGraph) representing a cluster.
-        - A starting node label (str) for that subgraph.
-    """
-    # Currently, the start_positions parameter is ignored.
-    # The function delegates the partitioning to partition_graph with num_slaves as the number of partitions
-    return partition_graph(full_graph, num_slaves)

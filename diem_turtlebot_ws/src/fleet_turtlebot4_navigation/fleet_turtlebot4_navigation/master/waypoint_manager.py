@@ -58,7 +58,6 @@ class WaypointManager:
           3. Assigns the entire global CPP route to each slave, starting from their respective offsets.
           4. Publishes the first waypoint to each slave without checking edge occupancy.
         """
-        # self.node.get_logger().info("==== assign_offsets_along_route() START ====")
 
         # Check if a global CPP route exists
         if not self.node.global_cpp_route:
